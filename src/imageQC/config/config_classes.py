@@ -419,6 +419,7 @@ class ParamSetCT(ParamSetCommon):
 class ParamSetXray(ParamSetCommon):
     """Set of parameters regarding Xray tests."""
 
+    # nuværende parametre
     hom_roi_size: float = 10.
     hom_roi_distance: float = 0.
     # % of shortes center to edge distance, if zero = center of quadrants
@@ -456,6 +457,18 @@ class ParamSetXray(ParamSetCommon):
     var_percent: int = 90
     dea_percent: int = 100
 
+    # Parametre til Flat Field Image Analysis (AAPM)
+    aapm_roi_size: float = 10.0                # Standard ROI størrelse (10x10 mm)
+    aapm_variance: bool = True                 # Variation fra pixelværdi i ROIs
+    aapm_roi_size_variance: float = 0.2        # Roi størrelens variabilitet.
+    aapm_roi_overlap: bool = True             # Om ROIs må overlappe
+    aapm_grid_auto: bool = True               # Automatisk grid af ROIs baseret på billed
+    aapm_grid_rows: int = 0                   # Antal rækker af ROIs (beregnes automatisk)
+    aapm_grid_cols: int = 0                   # Antal kolonner af ROIs (beregnes automatisk)
+    
+    # For at håndtere forskellige billedstørrelser:
+    aapm_max_width_mm: float = 600.0          # Maksimal bredde på Xray billeder
+    aapm_max_height_mm: float = 600.0         # Maksimal højde på Xray billeder
 
 @dataclass
 class ParamSetMammo(ParamSetCommon):

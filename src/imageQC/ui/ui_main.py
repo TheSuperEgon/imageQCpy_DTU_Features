@@ -334,6 +334,9 @@ class MainWindow(QMainWindow):
             if self.wid_window_level.tb_wl.chk_wl_update.isChecked() is False:
                 self.wid_window_level.tb_wl.set_window_level('dcm', set_tools=True)
 
+       # Kald on_image_loaded for at opdatere grid-dimensioner
+        self.tab_xray.on_image_loaded(self.imgs[0])
+
         if self.wid_quicktest.gb_quicktest.isChecked():
             self.wid_quicktest.set_current_template_to_imgs()
 

@@ -50,7 +50,7 @@ QUICKTEST_OPTIONS = {
     'MR': ['DCM', 'ROI', 'Num', 'SNR', 'PIU', 'Gho', 'Geo', 'Sli', 'MTF'],
     'SR': ['DCM']}
 
-COLORS = ['r', 'b', 'g', 'y', 'c', 'm', 'skyblue', 'orange']
+COLORS = ['r', 'b', 'g', 'y', 'c', 'm', 'skyblue', 'orange', 'purple', 'brown', 'pink', 'lime']  # tilføjet flere farver til alle rois
 
 HALFLIFE = {'F18': 109.77}
 ALTERNATIVES_ROI = ['One ROI',
@@ -78,7 +78,8 @@ ALTERNATIVES = {
         'Hom': ['Central + quadrants ROI, avg and stdev for each ROI',
                 'Central + quadrants ROI, avg + difference from overall average',
                 'Central + quadrants ROI, avg + % difference from overall average',
-                'Flat field test from Mammo'],
+                'Flat field test from Mammo',
+		'Flat field analysis from AAPM'],       # Tilføjelse af ny metode
         # 'AAPM recommendations?'
         },
     'Mammo': {
@@ -185,7 +186,17 @@ HEADERS = {
                      'ROI3 - avg %', 'ROI4 - avg %'],
             'alt3': ['Avg', 'Avg SNR', 'n ROIs',
                      'Deviating avgs', 'Deviating SNRs', 'Deviating ROIs',
-                     '% dev ROIs', 'Deviating pixels', '% dev pixels']
+                     '% dev ROIs', 'Deviating pixels', '% dev pixels'],
+            'alt4': ['Avg Signal',                # Average signal over alle ROIs
+                     'Avg Noise',                 # Average Noise over alle ROIs
+                     'Avg SNR',                   # Average SNR over alle ROIs
+         	     'Local Non-uniformity',      # Lokal non-uniformitet
+         	     'Global Non-uniformity',     # Global non-uniformitet
+        	     'Min Signal',                # Minimum PixValue i en ROI
+        	     'Max Signal',                # Maximum PixValue i en ROI
+       	 	     'ROI Count',                 # Antal ROIs
+      		     'Avg Dev',                   # Avg Dev af PixValues på tværs af ROIs
+        	     'SNR Std Dev']              # Standardafvigelse af SNR over alle ROIs
             },
         'Noi': {'alt0': ['Avg pixel value', 'Noise=Stdev']},
         'MTF': {
@@ -335,7 +346,8 @@ HEADERS_SUP = {
             'alt0': [], 'alt1': [], 'alt2': [],
             'alt3': ['Min pixel', 'Max pixel', 'Min Avg', 'Max Avg',
                  'Min SNR', 'Max SNR', 'n ROIs x', 'n ROIs y',
-                 'n masked ROIs', 'n masked pixels']
+                 'n masked ROIs', 'n masked pixels'],
+            'alt4': []                                   # Ny tilføjelse
             },
         'MTF': {'alt0': ['A1', 'sigma1', 'A2', 'sigma2']}
         },

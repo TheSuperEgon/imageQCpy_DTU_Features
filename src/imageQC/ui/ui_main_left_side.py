@@ -690,29 +690,47 @@ class CenterWidget(QGroupBox):
     def update_delta(self):
         """Update delta x,y,a - make sure valid values."""
         self.main.gui.delta_x = self.val_delta_x.value()
-        self.main.gui.delta_y = - self.val_delta_y.value()
+        self.main.gui.delta_y = -self.val_delta_y.value()
         self.main.gui.delta_a = self.val_delta_a.value()
 
+       # Kontroller om billeddata og annoteringer er gyldige før opdatering
         if self.main.gui.annotations and self.main.active_img is not None:
             szy, szx = np.shape(self.main.active_img)
-            if self.main.gui.delta_a == 0:
-                self.main.wid_image_display.canvas.ax.lines[0].set_ydata(
-                    y=szy * 0.5 + self.main.gui.delta_y)
-                self.main.wid_image_display.canvas.ax.lines[1].set_xdata(
-                    x=szx * 0.5 + self.main.gui.delta_x)
-            else:
-                x1, x2, y1, y2 = get_rotated_crosshair(
-                    szx, szy,
-                    (self.main.gui.delta_x, self.main.gui.delta_y,
-                     self.main.gui.delta_a))
-                self.main.wid_image_display.canvas.ax.lines[0].set_ydata(
-                    [y1, y2])
-                self.main.wid_image_display.canvas.ax.lines[1].set_xdata(
-                    [x1, x2])
 
-            self.main.wid_image_display.canvas.draw()
-            self.main.update_roi()
-            self.main.reset_results()
+            try:
+                if self.main.gui.delta_a == 0:
+                   # Simpel opdatering uden rotation
+                    new_y = szy * 0.5 + self.main.gui.delta_y
+                    new_x = szx * 0.5 + self.main.gui.delta_x
+                
+                   # Sikre at værdierne er gyldige før opdatering
+                    if isinstance(new_y, (int, float)) and isinstance(new_x, (int, float)):
+                        self.main.wid_image_display.canvas.ax.lines[0].set_ydata([new_y, new_y])  # Sørg for det er en liste
+                        self.main.wid_image_display.canvas.ax.lines[1].set_xdata([new_x, new_x])
+                    else:
+                        print(f"[DEBUG] Invalid data for new_x or new_y: {new_x}, {new_y}")
+            
+                else:
+                   # Håndter rotation
+                    x1, x2, y1, y2 = get_rotated_crosshair(
+                        szx, szy,
+                        (self.main.gui.delta_x, self.main.gui.delta_y, self.main.gui.delta_a)
+                    )
+
+                   # Tjek at dataene er gyldige lister før opdatering
+                    if all(isinstance(val, (int, float)) for val in [x1, x2, y1, y2]):
+                        self.main.wid_image_display.canvas.ax.lines[0].set_ydata([y1, y2])
+                        self.main.wid_image_display.canvas.ax.lines[1].set_xdata([x1, x2])
+                    else:
+                        print(f"[DEBUG] Invalid crosshair data: {x1}, {x2}, {y1}, {y2}")
+
+               # Tegn grafen igen
+                self.main.wid_image_display.canvas.draw()
+                self.main.update_roi()
+                self.main.reset_results()
+
+            except Exception as e:
+                print(f"[DEBUG] Error in update_delta: {e}")
 
     def reset_delta(self):
         """Reset center displacement and rotation."""
