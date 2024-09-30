@@ -50,7 +50,7 @@ QUICKTEST_OPTIONS = {
     'MR': ['DCM', 'ROI', 'Num', 'SNR', 'PIU', 'Gho', 'Geo', 'Sli', 'MTF'],
     'SR': ['DCM']}
 
-COLORS = ['r', 'b', 'g', 'y', 'c', 'm', 'skyblue', 'orange', 'purple', 'brown', 'pink', 'lime']  # tilføjet flere farver til alle rois
+COLORS = ['r', 'b', 'g', 'y', 'c', 'm', 'skyblue', 'orange']
 
 HALFLIFE = {'F18': 109.77}
 ALTERNATIVES_ROI = ['One ROI',

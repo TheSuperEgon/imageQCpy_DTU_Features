@@ -707,7 +707,7 @@ def get_roi_rectangle_aapm(image_shape, roi_width=0, roi_height=0, offcenter_xy=
     end_x = int(start_x + roi_width)
     end_y = int(start_y + roi_height)
 
-    # *** Tilføj denne kontrol for at sikre, at ROI-størrelsen er større end 0 ***
+    # Kontrol for at sikre, at ROI-størrelsen er større end 0 
     if end_x <= start_x or end_y <= start_y:
         raise ValueError("ROI dimensions are invalid. Negative or zero-size ROI.")
 
@@ -916,7 +916,7 @@ def get_roi_hom_flatfield(image_info, paramset):
 
 def get_roi_hom_aapm(image_info, paramset):
     """Calculate ROI array for AAPM Flat Field Image Analysis."""
-
+    
     # Beregn ROI-størrelsen i pixels baseret på billedets pixelspacing
     roi_size_in_pix_x = paramset.aapm_roi_size / image_info.pix[0]  # Width
     roi_size_in_pix_y = paramset.aapm_roi_size / image_info.pix[1]  # Height
@@ -928,8 +928,8 @@ def get_roi_hom_aapm(image_info, paramset):
     roi_array = []
     min_roi_size = 1.0  # Minimum tilladt ROI-størrelse for bredde og højde i pixels
 
-    for row in range(rows + 1):  # Inkluder den sidste række
-        for col in range(cols + 1):  # Inkluder den sidste kolonne
+    for row in range(rows):  # Gå kun gennem gyldige rækker
+        for col in range(cols):  # Gå kun gennem gyldige kolonner
             # Beregn startpositioner for hver ROI
             start_x = col * roi_size_in_pix_x
             start_y = row * roi_size_in_pix_y
@@ -942,12 +942,11 @@ def get_roi_hom_aapm(image_info, paramset):
             roi_width = end_x - start_x
             roi_height = end_y - start_y
 
-            # Kontroller at bredden og højden er større end minimumstærsklen
+            # Ekstra kontrol: Skip ROIs, der er for små
             if roi_width < min_roi_size or roi_height < min_roi_size:
-                print(f"[ERROR] Skipping invalid ROI (row: {row}, col: {col}) due to small dimensions: Width {roi_width}, Height {roi_height}")
                 continue
 
-            # Log debug information for validering
+            # Debug-udskrivning for at sikre, at ROIs dimensioner er korrekte
             print(f"[DEBUG] ROI (row: {row}, col: {col}) - Start X: {start_x}, Start Y: {start_y}, Width: {roi_width}, Height: {roi_height}")
 
             try:
@@ -956,7 +955,7 @@ def get_roi_hom_aapm(image_info, paramset):
                                              offcenter_xy=(start_x, start_y))
                 roi_array.append(roi)
             except ValueError as ve:
-                print(f"[ERROR] Caught ValueError: {ve}. Skipping invalid ROI (row: {row}, col: {col}).")
+                continue
 
     # Returner ROI-array'et
     return roi_array
