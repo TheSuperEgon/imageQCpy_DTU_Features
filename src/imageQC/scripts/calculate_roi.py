@@ -45,7 +45,6 @@ def get_rois(image, image_number, input_main):
         dict if slice thickness CT
     errmsg : str or list of str or None
     """
-
     roi_array = None
     errmsg = None
 
@@ -60,23 +59,6 @@ def get_rois(image, image_number, input_main):
             input_main.gui.delta_a]
     except AttributeError:
         delta_xya = [0, 0, 0.0]
-
-    # Check hvilken test der er valgt
-    if test_code == 'Hom':  # Homogeneity test
-        if input_main.current_modality == 'Xray' and paramset.hom_tab_alt == 4:  # AAPM 
-           # Brug AAPM logikken til at beregne ROI
-            roi_array = get_roi_hom_aapm(image_info, paramset)
-        elif input_main.current_modality == 'Mammo' or (input_main.current_modality == 'Xray' and paramset.hom_tab_alt == 3):
-           # Brug Mammo flat field test logikken
-            roi_array = get_roi_hom_flatfield(image_info, paramset)
-        else:
-           # Brug standard homogenitet logikken
-            roi_array = get_roi_hom(image_info, paramset, delta_xya=delta_xya, modality=input_main.current_modality)
-
-   # Gem ROIs i input_main så de kan tilgås i andre dele af system
-    input_main.current_roi = roi_array
-
-    return roi_array, errmsg
 
     def Bar():  # Bar phantom NM
         return get_roi_NM_bar(image, image_info, paramset)
@@ -678,44 +660,6 @@ def get_roi_rectangle(image_shape,
 
     return inside
 
-def get_roi_rectangle_aapm(image_shape, roi_width=0, roi_height=0, offcenter_xy=(0, 0), min_roi_size=1):
-    """Generate AAPM rectangular ROI given center position and size.
-
-    Parameters
-    ----------
-    image_shape : tuple of ints
-        Dimensions of the image (rows, columns).
-    roi_width : int, optional
-        Width of ROI in pixels.
-    roi_height : int, optional
-        Height of ROI in pixels.
-    offcenter_xy : tuple, optional
-        Center of ROI relative to center of image (default is (0, 0)).
-
-    Returns
-    -------
-    roi : ndarray
-        Smaller 2D boolean array representing the ROI.
-    """
-    # Beregn ROI's center position i billedet
-    if roi_width < min_roi_size or roi_height < min_roi_size:
-        raise ValueError("ROI dimensions must be greater than the minimum size.")
-
-    # Beregn ROI's start og slut positioner
-    start_x = int(offcenter_xy[0] - 0.5 * roi_width)
-    start_y = int(offcenter_xy[1] - 0.5 * roi_height)
-    end_x = int(start_x + roi_width)
-    end_y = int(start_y + roi_height)
-
-    # Kontrol for at sikre, at ROI-størrelsen er større end 0 
-    if end_x <= start_x or end_y <= start_y:
-        raise ValueError("ROI dimensions are invalid. Negative or zero-size ROI.")
-
-    # Opret en boolean-array kun for ROI-området
-    roi = np.zeros((end_y - start_y, end_x - start_x), dtype=bool)
-    roi[:, :] = True
-
-    return roi
 
 def get_roi_circle(image_shape, delta_xy, radius):
     """Generate circular roi given center position and radius.
@@ -912,52 +856,6 @@ def get_roi_hom_flatfield(image_info, paramset):
         image_info.shape, roi_width=roi_var_in_pix, roi_height=roi_var_in_pix)
     roi_array = [roi_small, roi_variance]
 
-    return roi_array
-
-def get_roi_hom_aapm(image_info, paramset):
-    """Calculate ROI array for AAPM Flat Field Image Analysis."""
-    
-    # Beregn ROI-størrelsen i pixels baseret på billedets pixelspacing
-    roi_size_in_pix_x = paramset.aapm_roi_size / image_info.pix[0]  # Width
-    roi_size_in_pix_y = paramset.aapm_roi_size / image_info.pix[1]  # Height
-
-    # Beregn det totale antal rækker og kolonner baseret på billede og ROI-størrelse
-    rows = int(image_info.shape[0] // roi_size_in_pix_y)
-    cols = int(image_info.shape[1] // roi_size_in_pix_x)
-
-    roi_array = []
-    min_roi_size = 1.0  # Minimum tilladt ROI-størrelse for bredde og højde i pixels
-
-    for row in range(rows):  # Gå kun gennem gyldige rækker
-        for col in range(cols):  # Gå kun gennem gyldige kolonner
-            # Beregn startpositioner for hver ROI
-            start_x = col * roi_size_in_pix_x
-            start_y = row * roi_size_in_pix_y
-
-            # Beregn slutpositioner og juster for at sikre, at ROI ikke går ud over billedets grænser
-            end_x = min(start_x + roi_size_in_pix_x, image_info.shape[1])
-            end_y = min(start_y + roi_size_in_pix_y, image_info.shape[0])
-
-            # Beregn ROI'ens bredde og højde
-            roi_width = end_x - start_x
-            roi_height = end_y - start_y
-
-            # Ekstra kontrol: Skip ROIs, der er for små
-            if roi_width < min_roi_size or roi_height < min_roi_size:
-                continue
-
-            # Debug-udskrivning for at sikre, at ROIs dimensioner er korrekte
-            print(f"[DEBUG] ROI (row: {row}, col: {col}) - Start X: {start_x}, Start Y: {start_y}, Width: {roi_width}, Height: {roi_height}")
-
-            try:
-                # Generer ROI'en ved hjælp af de beregnede dimensioner
-                roi = get_roi_rectangle_aapm(image_info.shape, roi_width=roi_width, roi_height=roi_height,
-                                             offcenter_xy=(start_x, start_y))
-                roi_array.append(roi)
-            except ValueError as ve:
-                continue
-
-    # Returner ROI-array'et
     return roi_array
 
 def get_roi_CTn_TTF(test, image, image_info, paramset, delta_xya=[0, 0, 0.]):

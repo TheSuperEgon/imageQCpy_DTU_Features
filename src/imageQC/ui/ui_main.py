@@ -12,6 +12,7 @@ from pathlib import Path
 import webbrowser
 import numpy as np
 import pandas as pd
+import pydicom
 
 from PyQt5.QtGui import QIcon, QScreen
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -102,7 +103,9 @@ class MainWindow(QMainWindow):
         # minimum parameters as for scripts.automation.InputMain
         self.current_modality = 'CT'
         self.current_test = QUICKTEST_OPTIONS['CT'][0]
+        print("[DEBUG] Indlæser indstillinger med update_settings...")  # tilføjer dette før
         self.update_settings()  # sets self.tag_infos (and a lot more)
+        print("[DEBUG] Indstillinger indlæst med succes.")      # tilføjer dette efter
         plt.rcParams.update({'font.size': self.user_prefs.font_size})
         plt.rcParams['axes.xmargin'] = 0
         plt.rcParams['axes.ymargin'] = 0
@@ -334,8 +337,25 @@ class MainWindow(QMainWindow):
             if self.wid_window_level.tb_wl.chk_wl_update.isChecked() is False:
                 self.wid_window_level.tb_wl.set_window_level('dcm', set_tools=True)
 
-       # Kald on_image_loaded for at opdatere grid-dimensioner
+        # Kald on_image_loaded for at opdatere grid-dimensioner
         self.tab_xray.on_image_loaded(self.imgs[0])
+
+        # Kontrollér om billeddata er tilgængelig
+        if hasattr(self.imgs[0], 'image') and self.imgs[0].image is not None:
+            self.current_image = self.imgs[0].image
+            self.display_image(self.current_image)  # Vis billedet
+        else:
+            # Hent billeddata fra DICOM, hvis billeddata ikke er direkte tilgængelig
+            dicom_file = self.imgs[0].filepath
+            dicom_data = pydicom.dcmread(dicom_file)
+
+            if hasattr(dicom_data, 'pixel_array'):
+                image_data = dicom_data.pixel_array
+                self.current_image = image_data  # Initialiser current_image
+                self.display_image(image_data)  # Vis billedet fra DICOM-data
+            else:
+                print("[ERROR] Billeddata (pixel_array) ikke fundet i DICOM-filen.")
+                return  # Stop hvis der ikke er billeddata
 
         if self.wid_quicktest.gb_quicktest.isChecked():
             self.wid_quicktest.set_current_template_to_imgs()
@@ -344,6 +364,78 @@ class MainWindow(QMainWindow):
             self.reset_summed_img()
         self.tree_file_list.update_file_list()
         self.current_sort_pattern = None
+
+    def display_image(self, image):
+        """Vis billedet i GUI'en via Matplotlib canvas."""
+        if image is None:
+            print("[ERROR] Intet billede indlæst.")
+            return
+
+        # Sørg for, at canvas er klar til at vise billedet
+        self.wid_image_display.canvas.ax.clear()
+
+        # Sørg for at referere korrekt til zoom_slider (justér dette, hvis nødvendigt)
+        zoom_level = self.tab_xray.zoom_slider.value() if hasattr(self.tab_xray, 'zoom_slider') else 1
+
+        # Hvis billedet er gråtone, vis det som sådan
+        if len(image.shape) == 2:  # Gråtonet billede
+            if zoom_level == 1:
+                # Zoom-niveau 1: Bevar originalt aspektforhold
+                self.wid_image_display.canvas.ax.imshow(image, cmap='gray', aspect='equal')
+            else:
+                # For andre zoom-niveauer, tillad automatisk justering af aspect
+                self.wid_image_display.canvas.ax.imshow(image, cmap='gray', aspect='auto')
+        else:  # Farvebillede
+            if zoom_level == 1:
+                # Zoom-niveau 1: Bevar originalt aspektforhold
+                self.wid_image_display.canvas.ax.imshow(image, aspect='equal')
+            else:
+                # For andre zoom-niveauer, tillad automatisk justering af aspect
+                self.wid_image_display.canvas.ax.imshow(image, aspect='auto')
+
+        # Fjern aksevisningen
+        self.wid_image_display.canvas.ax.axis('off')
+
+        # Opdater visningen
+        self.wid_image_display.canvas.draw()
+
+    def update_image_view(self, zoom_level, zoom_center_x, zoom_center_y):
+        """Opdater billedevisningen baseret på zoom-niveau og center."""
+        if self.tab_xray.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
+            if not hasattr(self, 'current_image') or self.current_image is None:
+                print("[ERROR] current_image er ikke initialiseret.")
+                return
+
+            # Hent originalbilledet
+            original_image = self.current_image.copy()
+
+            # Hvis zoom_level er 1, vis hele billedet
+            if zoom_level == 1:
+                self.display_image(original_image)
+                return
+
+            # Justering af zoomniveau 
+            zoom_factor = 1 + (zoom_level - 1) * 0.7  # faktor her
+
+            # Beregn zoomet område baseret på zoom_factor
+            zoomed_width = int(original_image.shape[1] / zoom_factor)
+            zoomed_height = int(original_image.shape[0] / zoom_factor)
+
+            # Beregn zoom startposition baseret på center
+            start_x = int(max(0, zoom_center_x - zoomed_width // 2))
+            start_y = int(max(0, zoom_center_y - zoomed_height // 2))
+
+            # Sørg for ikke at gå udenfor billedets grænser
+            end_x = int(min(start_x + zoomed_width, original_image.shape[1]))
+            end_y = int(min(start_y + zoomed_height, original_image.shape[0]))
+
+            # Udskær billedet til det zoomede område
+            zoomed_image = original_image[start_y:end_y, start_x:end_x]
+
+            # Opdater visningen af billedet
+            self.display_image(zoomed_image)
+        else:
+            print("[INFO] Zoom-funktionalitet er kun tilgængelig for AAPM-metoden.")
 
     def read_header(self):
         """View file as header."""

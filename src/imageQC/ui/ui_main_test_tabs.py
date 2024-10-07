@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QFormLayout, QGroupBox,
     QPushButton, QLabel, QDoubleSpinBox, QCheckBox, QRadioButton, QButtonGroup,
     QComboBox, QAction, QToolBar, QTableWidget, QTableWidgetItem, QTimeEdit,
-    QMessageBox, QInputDialog, QFileDialog, QDialogButtonBox, QHeaderView, QSpinBox
+    QMessageBox, QInputDialog, QFileDialog, QDialogButtonBox, QHeaderView, QSpinBox, QSlider
     )
 
 # imageQC block start
@@ -153,8 +153,14 @@ class ParamsTabCommon(QTabWidget):
                         reciever.setCurrentText(content)
                 elif 'offset_xy' in field.name:
                     reciever.setText(f'{content[0]}, {content[1]}')
-                elif field.type == 'int' or field.type == 'float':
+                # Check if reciever is QSpinBox (integer input)
+                elif isinstance(reciever, QSpinBox):
+                    if isinstance(content, float):
+                        content = int(content)  # Convert float to int for QSpinBox
                     reciever.setValue(content)
+                # Check if reciever is QDoubleSpinBox (float input)
+                elif isinstance(reciever, QDoubleSpinBox):
+                    reciever.setValue(content)  # Allow float values for QDoubleSpinBox
                 elif field.type == 'bool':
                     if hasattr(reciever, 'setChecked'):
                         reciever.setChecked(content)
@@ -1544,6 +1550,10 @@ class ParamsTabXray(ParamsTabCommon):
     def __init__(self, parent):
         super().__init__(parent)
 
+        # Initialiser zoom-center variabler
+        self.zoom_center_x = 0
+        self.zoom_center_y = 0
+
         self.create_tab_hom()
         self.create_tab_noi()
         self.create_tab_mtf()
@@ -1564,69 +1574,73 @@ class ParamsTabXray(ParamsTabCommon):
         """Opdater hvilke funktioner der er aktive baseret på valgt metode."""
         super().update_enabled()
 
-       # Sørger for at der arbejdes med X-ray modalitet
+        # Sørg for at der arbejdes med X-ray modalitet
         if self.main.current_modality != 'Xray':
             return  # Gå ud af funktionen, hvis modaliteten ikke er Xray
 
         paramset = self.main.current_paramset
 
-       # Opdater GUI baseret på den valgte metode
+        # Skjul eller vis elementer baseret på metoden
         if paramset.hom_tab_alt in [0, 1, 2]:  # Central + quadrants ROI metoder
             self.stack_hom.setCurrentWidget(self.central_quadrants_widget)
             self.hom_roi_size_label.setText('ROI radius (mm)')
+            # Skjul zoom-elementer for Central + quadrants ROI metoder
+            self.toggle_visibility([], [self.zoom_slider, self.zoom_center_dropdown])
 
         elif paramset.hom_tab_alt == 3:  # Flat field test from Mammo
             self.stack_hom.setCurrentWidget(self.flat_widget_mammo)
-        
-           # Opdater Mammo-specifikke parametre
-            self.hom_roi_size_variance.setValue(paramset.hom_roi_size_variance)
-            self.hom_variance.setChecked(paramset.hom_variance)
-            self.hom_mask_max.setChecked(paramset.hom_mask_max)
-            self.hom_mask_outer_mm.setValue(paramset.hom_mask_outer_mm)
-            self.hom_ignore_roi_percent.setValue(paramset.hom_ignore_roi_percent)
-            self.hom_deviating_pixels.setValue(paramset.hom_deviating_pixels)
-            self.hom_deviating_rois.setValue(paramset.hom_deviating_rois)
+            # Skjul zoom-elementer for Mammo-metoden
+            self.toggle_visibility([], [self.zoom_slider, self.zoom_center_dropdown])
 
         elif paramset.hom_tab_alt == 4:  # Flat field analysis AAPM
             self.stack_hom.setCurrentWidget(self.flat_widget_aapm)
- 
-           # Hvis auto-grid er valgt, beregn antallet af rækker og kolonner
+
+            # Vis zoom-elementer kun for AAPM-metoden
+            self.toggle_visibility([self.zoom_slider, self.zoom_center_dropdown], [])
+
+            # Hvis auto-grid er valgt, beregn antallet af rækker og kolonner
             if paramset.aapm_grid_auto and hasattr(self.main, 'current_image_width_mm'):
                 image_width_mm = self.main.current_image_width_mm  # Billedbredde i mm
                 image_height_mm = self.main.current_image_height_mm  # Billedhøjde i mm
-        
-               # Kald funktionen til at beregne grid-dimensionerne
-                print(f'Image width: {image_width_mm}, Image height: {image_height_mm}, ROI size: {paramset.aapm_roi_size}')
+
+                # Kald funktionen til at beregne grid-dimensionerne
                 rows, cols, _, _ = calculate_grid_dimensions(
-                    image_width_mm, image_height_mm, paramset.aapm_roi_size
+                    image_width_mm, image_height_mm, paramset.aapm_roi_size,
+                    zoom_level=self.zoom_slider.value(),  # Zoom-niveau
+                    zoom_center_x=self.zoom_center_x,  # Zoom-center X-koordinat
+                    zoom_center_y=self.zoom_center_y   # Zoom-center Y-koordinat
                 )
 
-               # Debug print for at sikre, at GUI viser de korrekte værdier
-                print(f"[DEBUG] Beregnede rækker: {rows}, kolonner: {cols}")
-
-               # Gem de beregnede rækker og kolonner i paramset
+                # Gem de beregnede rækker og kolonner i paramset
                 paramset.aapm_grid_rows, paramset.aapm_grid_cols = rows, cols
 
-               # Opdater de nye felter med beregnede dimensioner
+                # Opdater de nye felter med beregnede dimensioner
                 self.aapm_auto_rows_value.setText(str(rows))
                 self.aapm_auto_cols_value.setText(str(cols))
             else:
-               # Hvis der ikke er billede indlæst, eller auto-grid er slået fra
+                # Hvis der ikke er billede indlæst, eller auto-grid er slået fra
                 self.aapm_auto_rows_value.setText('N/A')
                 self.aapm_auto_cols_value.setText('N/A')
 
-           # Opdater GUI med beregnede eller manuelle værdier
+            # Opdater GUI med beregnede eller manuelle værdier
             self.aapm_grid_rows.setValue(paramset.aapm_grid_rows)
             self.aapm_grid_cols.setValue(paramset.aapm_grid_cols)
 
-           # Aktivér eller deaktiver manuel justering afhængig af auto-grid
+            # Aktivér eller deaktiver manuel justering afhængig af auto-grid
             self.aapm_grid_rows.setEnabled(not paramset.aapm_grid_auto)
             self.aapm_grid_cols.setEnabled(not paramset.aapm_grid_auto)
 
-           # Opdater AAPM-specifikke parametre
+            # Opdater AAPM-specifikke parametre
             self.aapm_roi_size.setValue(paramset.aapm_roi_size)
             self.aapm_roi_overlap.setChecked(paramset.aapm_roi_overlap)
             self.aapm_variance.setChecked(paramset.aapm_variance)
+
+    def toggle_visibility(self, show_widgets=[], hide_widgets=[]):
+        """Helper method to show or hide a list of widgets."""
+        for widget in show_widgets:
+            widget.setVisible(True)
+        for widget in hide_widgets:
+            widget.setVisible(False)
 
     def create_tab_hom(self):
         """GUI of tab Homogeneity."""
@@ -1641,15 +1655,17 @@ class ParamsTabXray(ParamsTabCommon):
 
         # Standardværdi for ROI radius til 10.0
         self.hom_roi_size.setValue(10.0)
-        
-        self.hom_roi_size.valueChanged.connect(
-            lambda: self.param_changed_from_gui(attribute='hom_roi_size'))
 
         # Tilføj label og inputfelt til layout (venstre side)
         self.tab_hom.hlo_top.addWidget(self.hom_roi_size_label)
         self.tab_hom.hlo_top.addWidget(self.hom_roi_size)
 
-        # Opret dropdown-menu for metoder
+        # Opret dropdown-menu for metoder og placer den øverst i højre hjørne
+        hlo_dropdown = QHBoxLayout()
+        hlo_dropdown.addStretch()  # Tilføj stretch for at skubbe elementer til højre
+        hlo_dropdown.addWidget(QLabel('Method/output: '))
+
+        # Initialisering af hom_tab_alt (dropdown til metoder)
         self.hom_tab_alt = QComboBox()
         self.hom_tab_alt.addItems([
             'Central + quadrants ROI, avg and stdev for each ROI',
@@ -1661,13 +1677,11 @@ class ParamsTabXray(ParamsTabCommon):
         self.hom_tab_alt.currentIndexChanged.connect(
             lambda: self.param_changed_from_gui(attribute='hom_tab_alt'))
 
-        # Layout til drop-down menuen (placeret i højre side)
-        hlo_dropdown = QHBoxLayout()
-        hlo_dropdown.addStretch()  # Tilføj stretch for at skubbe elementer til højre
-        hlo_dropdown.addWidget(QLabel('Method/output: '))
-        hlo_dropdown.addWidget(self.hom_tab_alt)
+        # Juster bredden af Method/output dropdown
+        self.hom_tab_alt.setFixedWidth(250)
 
         # Tilføj dropdown layout til hlo_top (højre side)
+        hlo_dropdown.addWidget(self.hom_tab_alt)
         self.tab_hom.hlo_top.addLayout(hlo_dropdown)
 
         # Opret widgets for hver metode
@@ -1693,30 +1707,30 @@ class ParamsTabXray(ParamsTabCommon):
         vlo = QVBoxLayout()
         flo = QFormLayout()
 
-       # ROI radius (mm) element
+        # ROI radius (mm) element
         flo.addRow(self.hom_roi_size_label, self.hom_roi_size)  # Tilføj kun én gang
 
-       # ROI rotation element
+        # ROI rotation element
         self.hom_roi_rotation = QDoubleSpinBox(
             decimals=1, minimum=-359.9, maximum=359.9, singleStep=0.1)
         self.hom_roi_rotation.valueChanged.connect(
             lambda: self.param_changed_from_gui(attribute='hom_roi_rotation'))
         flo.addRow(QLabel('Rotate ROI positions (deg)'), self.hom_roi_rotation)
 
-       # ROI distance element    
+        # ROI distance element    
         self.hom_roi_distance = QDoubleSpinBox(
             decimals=1, minimum=0, maximum=1000, singleStep=0.1)
         self.hom_roi_distance.valueChanged.connect(
             lambda: self.param_changed_from_gui(attribute='hom_roi_distance'))
         flo.addRow(QLabel('ROI distance (% from center)'), self.hom_roi_distance)
 
-       # læg elementer i layout    
+        # læg elementer i layout    
         hlo = QHBoxLayout()
         hlo.addLayout(flo)
         hlo.addStretch()
         vlo.addLayout(hlo)
 
-       # Info labels for at forklare beregningerne    
+        # Info labels for at forklare beregningerne    
         vlo.addWidget(uir.LabelItalic(
             'Same distance for all quadrants = % of shortest center-border distance.'))
         vlo.addWidget(uir.LabelItalic(
@@ -1813,95 +1827,161 @@ class ParamsTabXray(ParamsTabCommon):
 
     def create_flat_widget_aapm(self):
         """GUI for AAPM flat field analysis."""
-
-       # Opret hoved-widget til AAPM-fladfelt-analysen
+        
+        # Opretter selve widgeten og layoutet som bruges til arrangere GUI-elementerne
         self.flat_widget_aapm = QWidget()
-
-       # Opret hovedlayout, der opdeler GUI i to sektioner (venstre og højre)
         hlo_flat_widget_aapm = QHBoxLayout(self.flat_widget_aapm)
 
-       # Venstre side layout (QVBoxLayout for vertikal placering)
-        vbox_left = QVBoxLayout()
+        # Formularlayout til venstre side af GUI'en
+        flo_aapm = QFormLayout()
 
-       # Tilføjelse af elementer til venstre side
-       # Formularlayout til at organisere elementerne i rækker
-        flo_aapm_left = QFormLayout()
+        # Parametre for AAPM metoden
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(1)
+        self.zoom_slider.setMaximum(10)
+        self.zoom_slider.setValue(1)
+        self.zoom_slider.setTickPosition(QSlider.TicksBelow)
+        self.zoom_slider.setTickInterval(1)
+        self.zoom_slider.valueChanged.connect(self.update_zoom)
+        flo_aapm.addRow(QLabel('Zoom level:'), self.zoom_slider)
+
+        self.zoom_center_dropdown = QComboBox()
+        self.zoom_center_dropdown.addItems(['Center', 'Top-left', 'Top-right', 'Bottom-left', 'Bottom-right'])
+        self.zoom_center_dropdown.currentIndexChanged.connect(self.update_zoom_center)
+        flo_aapm.addRow(QLabel('Zoom center:'), self.zoom_center_dropdown)
 
         self.aapm_roi_size = QDoubleSpinBox(decimals=1, minimum=1.0, maximum=100.0, singleStep=0.1)
-        self.aapm_roi_size.setFixedWidth(70)  # Juster bredden af QDoubleSpinBox
-        flo_aapm_left.addRow(QLabel('AAPM ROI size (mm)'), self.aapm_roi_size)
+        flo_aapm.addRow(QLabel('AAPM ROI size (mm)'), self.aapm_roi_size)
 
         self.aapm_roi_overlap = QCheckBox()
-        flo_aapm_left.addRow(QLabel('Allow ROI overlap'), self.aapm_roi_overlap)
+        flo_aapm.addRow(QLabel('Allow ROI overlap'), self.aapm_roi_overlap)
 
         self.aapm_grid_auto = QCheckBox()
-        self.aapm_grid_auto.setChecked(True)  # Standard: auto-grid er aktiveret
-        flo_aapm_left.addRow(QLabel('Auto-generate grid'), self.aapm_grid_auto)
+        self.aapm_grid_auto.setChecked(True)
+        self.aapm_grid_auto.toggled.connect(lambda: self.param_changed_from_gui(attribute='aapm_grid_auto'))
+        flo_aapm.addRow(QLabel('Auto-generate grid'), self.aapm_grid_auto)
 
         self.aapm_variance = QCheckBox()
-        flo_aapm_left.addRow(QLabel('Calculate variance within each ROI'), self.aapm_variance)
+        flo_aapm.addRow(QLabel('Calculate variance within each ROI'), self.aapm_variance)
 
-       # Tilføj formularlayoutet til venstre side
-        vbox_left.addLayout(flo_aapm_left)
+        # Tilføj venstre side layout til hovedlayoutet
+        hlo_flat_widget_aapm.addLayout(flo_aapm)
+        hlo_flat_widget_aapm.addWidget(uir.VLine())
 
-       # Tilføj venstre layout til hovedlayoutet
-        hlo_flat_widget_aapm.addLayout(vbox_left)
+        # Højre side layout til de øvrige elementer
+        vlo_right_aapm = QVBoxLayout()
+        flo_right_aapm = QFormLayout()
 
-       # Højre side layout (QVBoxLayout for vertikal placering)
-        vbox_right = QVBoxLayout()
+        self.aapm_auto_rows_value = QLabel('N/A')
+        flo_right_aapm.addRow(QLabel('Auto-calculated rows:'), self.aapm_auto_rows_value)
 
-       # Formularlayout til at organisere elementerne i rækker på højre side
-        flo_aapm_right = QFormLayout()
-
-        self.aapm_auto_rows_value = QLabel('N/A')  # Opdateres senere med rækker
-        self.aapm_auto_cols_value = QLabel('N/A')  # Opdateres senere med kolonner
-        flo_aapm_right.addRow(QLabel('Auto-calculated rows:'), self.aapm_auto_rows_value)
-        flo_aapm_right.addRow(QLabel('Auto-calculated columns:'), self.aapm_auto_cols_value)
+        self.aapm_auto_cols_value = QLabel('N/A')
+        flo_right_aapm.addRow(QLabel('Auto-calculated columns:'), self.aapm_auto_cols_value)
 
         self.aapm_grid_rows = QSpinBox(minimum=1, maximum=100)
-        self.aapm_grid_rows.setFixedWidth(60)  # Juster bredden af QSpinBox
-        flo_aapm_right.addRow(QLabel('Manual Grid rows'), self.aapm_grid_rows)
+        flo_right_aapm.addRow(QLabel('Manual Grid rows'), self.aapm_grid_rows)
 
         self.aapm_grid_cols = QSpinBox(minimum=1, maximum=100)
-        self.aapm_grid_cols.setFixedWidth(60)  # Juster bredden af QSpinBox
-        flo_aapm_right.addRow(QLabel('Manual Grid columns'), self.aapm_grid_cols)
+        flo_right_aapm.addRow(QLabel('Manual Grid columns'), self.aapm_grid_cols)
 
-       # Tilføj formularlayoutet til højre side
-        vbox_right.addLayout(flo_aapm_right)
+        # Tilføj højre side layout til hovedlayoutet
+        vlo_right_aapm.addLayout(flo_right_aapm)
 
-       # Tilføj højre layout til hovedlayoutet
-        hlo_flat_widget_aapm.addLayout(vbox_right)
+        # Tilføj højre layout til hovedlayoutet
+        hlo_flat_widget_aapm.addLayout(vlo_right_aapm)
 
-       # Forbind auto-grid checkbox til at opdatere GUI-elementer
-        self.aapm_grid_auto.toggled.connect(
-            lambda: self.param_changed_from_gui(attribute='aapm_grid_auto')
-        )
+    def update_zoom_center(self):
+        """Opdater zoom-center baseret på brugerens valg."""
+        if not hasattr(self.main, 'current_image') or self.main.current_image is None:
+            print("[ERROR] current_image er ikke initialiseret.")
+            return  # Stop funktionen, hvis der ikke er noget billede at zoome på
+
+        selected_center = self.zoom_center_dropdown.currentText()
+
+        if selected_center == 'Center':
+            self.zoom_center_x = self.main.current_image.shape[1] // 2
+            self.zoom_center_y = self.main.current_image.shape[0] // 2
+        elif selected_center == 'Top-left':
+            self.zoom_center_x = 0
+            self.zoom_center_y = 0
+        elif selected_center == 'Top-right':
+            self.zoom_center_x = self.main.current_image.shape[1]
+            self.zoom_center_y = 0
+        elif selected_center == 'Bottom-left':
+            self.zoom_center_x = 0
+            self.zoom_center_y = self.main.current_image.shape[0]
+        elif selected_center == 'Bottom-right':
+            self.zoom_center_x = self.main.current_image.shape[1]
+            self.zoom_center_y = self.main.current_image.shape[0]
+
+        # Når centeret er opdateret, zoom ind på det valgte område
+        self.update_zoom()
+
+    def update_zoom(self):
+        """Opdater zoom-niveau og billedevisning, når slideren ændres."""
+        # Kontrollér først, om AAPM-metoden er valgt
+        if self.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
+            zoom_level = self.zoom_slider.value()
+
+            # Kontroller om billeddata er tilgængeligt og om zoom-center er sat
+            if hasattr(self.main, 'current_image') and self.main.current_image is not None:
+                if hasattr(self, 'zoom_center_x') and hasattr(self, 'zoom_center_y'):
+                    # Opdater billedet baseret på det nye zoom-niveau og zoom-center
+                    self.main.update_image_view(zoom_level, self.zoom_center_x, self.zoom_center_y)
+
+                # Hvis billeddimensions og ROI-size er tilgængelige, beregn grid-dimensions
+                if hasattr(self.main, 'current_image_width_mm') and hasattr(self.main, 'current_image_height_mm'):
+                    image_width_mm = self.main.current_image_width_mm
+                    image_height_mm = self.main.current_image_height_mm
+                    roi_size_mm = self.main.current_paramset.aapm_roi_size
+
+                    # Beregn grid-dimensioner ud fra zoom-niveau og zoom-center
+                    rows, cols, _, _ = calculate_grid_dimensions(
+                        image_width_mm, image_height_mm, roi_size_mm,
+                        zoom_level=zoom_level,
+                        zoom_center_x=self.zoom_center_x,
+                        zoom_center_y=self.zoom_center_y
+                    )
+
+                    # Opdater GUI med de nye dimensioner
+                    self.aapm_auto_rows_value.setText(str(rows))
+                    self.aapm_auto_cols_value.setText(str(cols))
+            else:
+                print("[ERROR] Billeddata ikke tilgængeligt for zoom.")
+        else:
+            print("[INFO] Zoom-funktionalitet er deaktiveret for denne metode.")
 
     def on_image_loaded(self, image):
         """Funktion der kaldes, når et billede indlæses."""
 
-       # Brug 'shape' til at få dimensionerne i pixels
+        # Bruger 'shape' til at få dimensionerne i pixels
         if hasattr(image, 'shape'):
             height_pixels, width_pixels = image.shape[:2]  # Højde og bredde i pixels
 
-           # Brug 'pix' (Pixel Spacing) til at finde pixel-størrelse og beregne millimeter
+            # Brug 'pix' (Pixel Spacing) til at finde pixel-størrelse og beregne millimeter
             if hasattr(image, 'pix') and len(image.pix) >= 2:
                 pixel_spacing_x, pixel_spacing_y = image.pix[:2]  # Pixelstørrelse i mm
                 print(f'[DEBUG] Pixel spacing: {pixel_spacing_x} mm, {pixel_spacing_y} mm')
 
-               # Beregn billedstørrelse i millimeter
+                # Beregn billedstørrelse i millimeter
                 self.main.current_image_width_mm = width_pixels * pixel_spacing_x
                 self.main.current_image_height_mm = height_pixels * pixel_spacing_y
 
-               # Debugging - Udskriv billedstørrelse i millimeter
+                # Debugging - Udskriv billedstørrelse i millimeter
                 print(f'[DEBUG] Image width in mm: {self.main.current_image_width_mm}')
                 print(f'[DEBUG] Image height in mm: {self.main.current_image_height_mm}')
 
-               # Kald update_enabled for at opdatere GUI og beregne grid-dimensioner
+                # Tjek om dropdown-menuen har "Center" valgt som standard
+                if self.zoom_center_dropdown.currentText() == 'Center':
+                    # Sæt zoom-centeret til billedets midte
+                    self.zoom_center_x = width_pixels // 2
+                    self.zoom_center_y = height_pixels // 2
+
+                # Kald update_enabled for at opdatere GUI og beregne grid-dimensioner
                 self.update_enabled()
 
             else:
-               # Hvis der ikke er pixelspacing data
+                # Hvis der ikke er pixelspacing data
                 print("[DEBUG] Pixel spacing (pix) not found, can't calculate size in mm.")
         else:
             print("[DEBUG] Image does not have shape attribute")
@@ -4383,7 +4463,7 @@ class CTnTable(QTableWidget):
             for row in range(n_rows):
                 twi = QTableWidgetItem(str(this_col[row]))
                 if col > 0:
-                    twi.setTextAlignment(4)
+                    twi.setTextAlignment(Qt.AlignCenter)
                 self.setItem(row, col, twi)
 
         self.resizeColumnsToContents()

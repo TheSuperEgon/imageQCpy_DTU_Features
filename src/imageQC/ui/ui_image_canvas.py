@@ -502,11 +502,7 @@ class ImageCanvas(GenericImageCanvas):
         if self.main.current_modality == 'Mammo':
             flatfield = True
         elif self.main.current_modality == 'Xray':
-            # Tilføj betingelse for at bruge HomAAPM
-            if self.main.current_paramset.hom_tab_alt == 4:  # AAPM specific test
-                self.HomAAPM()  # Kald HomAAPM i stedet for Hom
-                return
-            elif self.main.current_paramset.hom_tab_alt == 3:
+            if self.main.current_paramset.hom_tab_alt == 3:
                 flatfield = True
 
         if flatfield:
@@ -524,54 +520,6 @@ class ImageCanvas(GenericImageCanvas):
                 self.contours.append(contour)
         else:
             self.add_contours_to_all_rois(colors=COLORS)
-
-    def HomAAPM(self):
-        """Draw AAPM Flat Field ROIs with dynamically assigned colors."""
-    
-       # Tjek om modaliteten er Xray, og om hom_tab_alt == 4 for AAPM
-        if self.main.current_modality == 'Xray' and self.main.current_paramset.hom_tab_alt == 4:
-           # Hent beregnede ROIs fra input_main (eller self.main)
-            roi_array = self.main.current_roi
-
-            if roi_array:
-               # Antallet af ROIs
-                num_rois = len(roi_array)
-                print(f"[DEBUG] Total number of ROIs generated: {num_rois}")
-            
-               # Brug dynamiske farver afhængigt af antallet af ROIs
-                roi_colors = COLORS * (num_rois // len(COLORS) + 1)
-            
-               # Sørg for, at farverne ikke er samme for nabofelter
-                for i in range(num_rois):
-                    color_index = i % len(roi_colors)
-
-                   # Log debug info for at tjekke farve og ROI-index
-                    print(f"[DEBUG] Drawing ROI {i} with color {roi_colors[color_index]}")
-
-                   # Tegn hver ROI med den tildelte farve
-                    self.add_contours_to_all_rois(
-                        colors=[roi_colors[color_index]],
-                        roi_indexes=[i],
-                        filled=False)
-
-               # Håndter yderligere parametre, hvis de er sat
-                if self.main.current_paramset.hom_mask_max:
-                    self.add_contours_to_all_rois(
-                        colors=['red'], roi_indexes=[2],
-                        filled=True, hatches=['////'], reset_contours=False)
-            
-                if self.main.current_paramset.hom_mask_outer_mm > 0:
-                    mask = np.where(self.main.current_roi[-1], 0, 1)
-                    contour = self.ax.contour(
-                        mask, levels=[0.9],
-                        colors='blue', alpha=0.5, linewidths=self.linewidth,
-                        linestyles='dotted')
-                    self.contours.append(contour)
-            else:
-                print("[ERROR] ROI array is empty, cannot draw ROIs.")
-        else:
-           # Hvis det ikke er et AAPM-flatfield, skal du bruge standardlogikken
-            self.Hom()  # Kald den originale Hom-funktion, hvis det ikke er AAPM
 
     def MTF(self):
         """Draw MTF ROI."""
