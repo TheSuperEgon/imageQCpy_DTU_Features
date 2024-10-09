@@ -1579,8 +1579,12 @@ class ParamsTabXray(ParamsTabCommon):
             return  # Gå ud af funktionen, hvis modaliteten ikke er Xray
 
         paramset = self.main.current_paramset
+        image_info = self.main.current_image if hasattr(self.main, 'current_image') else None
+        
+        # Debug-udskrift for at bekræfte ROI size
+        print(f"[DEBUG] ROI Size (mm): {paramset.aapm_roi_size}")
 
-        # Skjul eller vis elementer baseret på metoden
+        # Skjul / vis elementer baseret på metode
         if paramset.hom_tab_alt in [0, 1, 2]:  # Central + quadrants ROI metoder
             self.stack_hom.setCurrentWidget(self.central_quadrants_widget)
             self.hom_roi_size_label.setText('ROI radius (mm)')
@@ -1589,7 +1593,6 @@ class ParamsTabXray(ParamsTabCommon):
 
         elif paramset.hom_tab_alt == 3:  # Flat field test from Mammo
             self.stack_hom.setCurrentWidget(self.flat_widget_mammo)
-            # Skjul zoom-elementer for Mammo-metoden
             self.toggle_visibility([], [self.zoom_slider, self.zoom_center_dropdown])
 
         elif paramset.hom_tab_alt == 4:  # Flat field analysis AAPM
@@ -1599,12 +1602,16 @@ class ParamsTabXray(ParamsTabCommon):
             self.toggle_visibility([self.zoom_slider, self.zoom_center_dropdown], [])
 
             # Hvis auto-grid er valgt, beregn antallet af rækker og kolonner
-            if paramset.aapm_grid_auto and hasattr(self.main, 'current_image_width_mm'):
+            if paramset.aapm_grid_auto and image_info is not None:
                 image_width_mm = self.main.current_image_width_mm  # Billedbredde i mm
                 image_height_mm = self.main.current_image_height_mm  # Billedhøjde i mm
+                
+                # Debug-udskrift for at bekræfte værdierne
+                print(f"[DEBUG] Image Width (mm): {image_width_mm}, Image Height (mm): {image_height_mm}")
 
                 # Kald funktionen til at beregne grid-dimensionerne
                 rows, cols, _, _ = calculate_grid_dimensions(
+                    image_info,
                     image_width_mm, image_height_mm, paramset.aapm_roi_size,
                     zoom_level=self.zoom_slider.value(),  # Zoom-niveau
                     zoom_center_x=self.zoom_center_x,  # Zoom-center X-koordinat
@@ -1700,7 +1707,7 @@ class ParamsTabXray(ParamsTabCommon):
 
         # Opdater initiale GUI-indstillinger baseret på valg i dropdown-menuen
         self.update_enabled()
-
+    
     def create_central_quadrants_widget(self):
         """Opret GUI for Central + quadrants ROI metoder."""
         self.central_quadrants_widget = QWidget()
@@ -1921,7 +1928,10 @@ class ParamsTabXray(ParamsTabCommon):
         """Opdater zoom-niveau og billedevisning, når slideren ændres."""
         # Kontrollér først, om AAPM-metoden er valgt
         if self.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
+            image_info = self.main.current_image if hasattr(self.main, 'current_image') else None
+            print(f"[DEBUG] AAPM ROI overlap allowed: {self.main.current_paramset.aapm_roi_overlap}")
             zoom_level = self.zoom_slider.value()
+            print(f"[DEBUG] Current zoom level: {zoom_level}") #Debug print for zoom level
 
             # Kontroller om billeddata er tilgængeligt og om zoom-center er sat
             if hasattr(self.main, 'current_image') and self.main.current_image is not None:
@@ -1930,13 +1940,17 @@ class ParamsTabXray(ParamsTabCommon):
                     self.main.update_image_view(zoom_level, self.zoom_center_x, self.zoom_center_y)
 
                 # Hvis billeddimensions og ROI-size er tilgængelige, beregn grid-dimensions
-                if hasattr(self.main, 'current_image_width_mm') and hasattr(self.main, 'current_image_height_mm'):
+                if image_info is not None:
                     image_width_mm = self.main.current_image_width_mm
                     image_height_mm = self.main.current_image_height_mm
                     roi_size_mm = self.main.current_paramset.aapm_roi_size
+                    
+                    # Debug-udskrift for at bekræfte værdierne
+                    print(f"[DEBUG] Image Width (mm): {image_width_mm}, Image Height (mm): {image_height_mm}, ROI Size (mm): {roi_size_mm}")
 
                     # Beregn grid-dimensioner ud fra zoom-niveau og zoom-center
                     rows, cols, _, _ = calculate_grid_dimensions(
+                        image_info,
                         image_width_mm, image_height_mm, roi_size_mm,
                         zoom_level=zoom_level,
                         zoom_center_x=self.zoom_center_x,
@@ -1949,42 +1963,44 @@ class ParamsTabXray(ParamsTabCommon):
             else:
                 print("[ERROR] Billeddata ikke tilgængeligt for zoom.")
         else:
-            print("[INFO] Zoom-funktionalitet er deaktiveret for denne metode.")
+            print("[INFO] Zoom-funktionalitet er kun tilgængelig for AAPM-metoden.")
 
     def on_image_loaded(self, image):
         """Funktion der kaldes, når et billede indlæses."""
 
+        # Kontroller, at billeddata er tilgængeligt
+        if image is None or not hasattr(image, 'shape'):
+            print("[ERROR] Ingen billeddata er tilgængelige.")
+            return  # Stop funktionen, hvis der ikke er billeddata
+
         # Bruger 'shape' til at få dimensionerne i pixels
-        if hasattr(image, 'shape'):
-            height_pixels, width_pixels = image.shape[:2]  # Højde og bredde i pixels
+        height_pixels, width_pixels = image.shape[:2]  # Højde og bredde i pixels
 
-            # Brug 'pix' (Pixel Spacing) til at finde pixel-størrelse og beregne millimeter
-            if hasattr(image, 'pix') and len(image.pix) >= 2:
-                pixel_spacing_x, pixel_spacing_y = image.pix[:2]  # Pixelstørrelse i mm
-                print(f'[DEBUG] Pixel spacing: {pixel_spacing_x} mm, {pixel_spacing_y} mm')
+        # Brug 'pix' (Pixel Spacing) til at finde pixel-størrelse og beregne millimeter
+        if hasattr(image, 'pix') and len(image.pix) >= 2:
+            pixel_spacing_x, pixel_spacing_y = image.pix[:2]  # Pixelstørrelse i mm
+            print(f'[DEBUG] Pixel spacing: {pixel_spacing_x} mm, {pixel_spacing_y} mm')
 
-                # Beregn billedstørrelse i millimeter
-                self.main.current_image_width_mm = width_pixels * pixel_spacing_x
-                self.main.current_image_height_mm = height_pixels * pixel_spacing_y
+            # Beregn billedstørrelse i millimeter
+            self.main.current_image_width_mm = width_pixels * pixel_spacing_x
+            self.main.current_image_height_mm = height_pixels * pixel_spacing_y
 
-                # Debugging - Udskriv billedstørrelse i millimeter
-                print(f'[DEBUG] Image width in mm: {self.main.current_image_width_mm}')
-                print(f'[DEBUG] Image height in mm: {self.main.current_image_height_mm}')
+            # Debugging - Udskriv billedstørrelse i millimeter
+            print(f'[DEBUG] Image width in mm: {self.main.current_image_width_mm}')
+            print(f'[DEBUG] Image height in mm: {self.main.current_image_height_mm}')
 
-                # Tjek om dropdown-menuen har "Center" valgt som standard
-                if self.zoom_center_dropdown.currentText() == 'Center':
-                    # Sæt zoom-centeret til billedets midte
-                    self.zoom_center_x = width_pixels // 2
-                    self.zoom_center_y = height_pixels // 2
+            # Tjek om dropdown-menuen har "Center" valgt som standard
+            if self.zoom_center_dropdown.currentText() == 'Center':
+                # Sæt zoom-centeret til billedets midte
+                self.zoom_center_x = width_pixels // 2
+                self.zoom_center_y = height_pixels // 2
 
-                # Kald update_enabled for at opdatere GUI og beregne grid-dimensioner
-                self.update_enabled()
+            # Kald update_enabled for at opdatere GUI og beregne grid-dimensioner
+            self.update_enabled()
 
-            else:
-                # Hvis der ikke er pixelspacing data
-                print("[DEBUG] Pixel spacing (pix) not found, can't calculate size in mm.")
         else:
-            print("[DEBUG] Image does not have shape attribute")
+            # Hvis der ikke er pixelspacing data
+            print("[DEBUG] Pixel spacing (pix) not found, can't calculate size in mm.")
 
     def create_tab_noi(self):
         """GUI of tab Noise."""

@@ -458,24 +458,24 @@ class ParamSetXray(ParamSetCommon):
     dea_percent: int = 100
 
     # Parametre til Flat Field Image Analysis (AAPM)
-    aapm_roi_size: float = 10.0                # Standard ROI størrelse (10x10 mm)
+    aapm_roi_size: float = 10.0
     aapm_variance: bool = True                 # Beregn varians inden for ROIs
     aapm_roi_size_variance: float = 0.5        # Varians af ROI-størrelse
     aapm_roi_overlap: bool = True              # Tillad overlappende ROIs
     aapm_grid_auto: bool = True                # Automatisk grid
     aapm_grid_rows: int = 0                    # Antal rækker af ROIs
     aapm_grid_cols: int = 0                    # Antal kolonner af ROIs
-    
+
     # Maksimal bredde og højde for Xray-billeder
-    aapm_max_width_mm: float = 500.0           
-    aapm_max_height_mm: float = 500.0          
+    aapm_max_width_mm: float = 500.0
+    aapm_max_height_mm: float = 500.0
 
     # Parametre til billed-transformation (Rigid Image Registration)
     aapm_rotation_angle: float = 0.0           # Rotationsvinkel i grader
-    aapm_scale_factor: float = 1.0             # Skalering (1.0 betyder ingen skalering)
+    aapm_scale_factor: float = 1.0             # 1.0 = ingen skalering
     aapm_translation_x: float = 0.0            # Translation i X-aksen (i mm)
     aapm_translation_y: float = 0.0            # Translation i Y-aksen (i mm)
-    
+
     # Parametre til zoom-funktionen
     aapm_zoom_level: float = 1.0               # Zoom-faktor (1.0 = ingen zoom)
     aapm_zoom_center_x: float = 0.0            # Zoom-center X-koordinat

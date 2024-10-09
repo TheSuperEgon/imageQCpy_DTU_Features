@@ -187,9 +187,9 @@ HEADERS = {
             'alt3': ['Avg', 'Avg SNR', 'n ROIs',
                      'Deviating avgs', 'Deviating SNRs', 'Deviating ROIs',
                      '% dev ROIs', 'Deviating pixels', '% dev pixels'],
-            'alt4': ['Avg Signal',                # Average signal over alle ROIs
-                     'Avg Noise',                 # Average Noise over alle ROIs
-                     'Avg SNR',                   # Average SNR over alle ROIs
+            'alt4': ['Avg Signal',            # Average signal over alle ROIs
+                     'Avg Noise',             # Average Noise over alle ROIs
+                     'Avg SNR',               # Average SNR over alle ROIs
          	     'Local Non-uniformity',      # Lokal non-uniformitet
          	     'Global Non-uniformity',     # Global non-uniformitet
         	     'Min Signal',                # Minimum PixValue i en ROI

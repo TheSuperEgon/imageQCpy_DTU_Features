@@ -130,11 +130,37 @@ def get_rois(image, image_number, input_main):
 
     def Hom():  # Homogeneity
         flatfield = False
+        zoom_level = input_main.tab_xray.zoom_slider.value()
+        
+        # tjekker om zoom level er for lavt for AAPM metoden
         if input_main.current_modality == 'Mammo':
             flatfield = True
         elif input_main.current_modality == 'Xray':
             if paramset.hom_tab_alt == 3:
                 flatfield = True
+            elif paramset.hom_tab_alt == 4:  # AAPM metoden
+                if zoom_level < 4:           # tærskel for at generere ROIs
+                    print(f"[DEBUG] Zoom level er for lavt. Ingen ROIs vil genereres")
+                    return [] # returnerer tom liste hvis zoom er for lavt
+                
+                zoom_center_x = input_main.tab_xray.zoom_center_x
+                zoom_center_y = input_main.tab_xray.zoom_center_y
+                
+                print(f"[DEBUG] Zoom level: {zoom_level}, Center X: {zoom_center_x}, Center Y: {zoom_center_y}")
+                
+                # Beregn AAPM ROIs
+                roi_array = get_roi_aapm(
+                    image_info, paramset,
+                    zoom_level=zoom_level,
+                    zoom_center_x=zoom_center_x,
+                    zoom_ceter_y=zoom_center_y
+                )
+                
+                # Debugging: Kontroller ROI arrayet
+                print(f"[DEBUG] Antal genererede ROIs: {len(roi_array)}")
+                
+                return roi_array # returnerer beregnede ROIs
+                
         if flatfield:
             roi_array = get_roi_hom_flatfield(image_info, paramset)
             roi_mask = np.full(image_info.shape[0:2], False)
@@ -604,6 +630,48 @@ def get_max_pos_yx(image):
 
     return (row_max_id, col_max_id)
 
+def get_roi_rectangle_aapm(image_shape, roi_width, roi_height, offcenter_xy=(0, 0)):
+    """
+    Opretter et rektangulært ROI baseret på bredde, højde og forskydning fra centeret.
+    
+    Parameters
+    ----------
+    image_shape : tuple of ints
+        Dimensionerne af billedet (højde, bredde).
+    roi_width : float
+        Bredden af ROI i pixels.
+    roi_height : float
+        Højden af ROI i pixels.
+    offcenter_xy : tuple of floats, optional
+        Forskydning af ROI i forhold til billedets center (default er (0, 0)).
+    
+    Returns
+    -------
+    roi : np.array
+        En 2D-array med type 'bool', hvor True er inden for ROI og False udenfor.
+    """
+    print(f"[DEBUG] Genererer rektangulær ROI ved X: {offcenter_xy[0]}, Y: {offcenter_xy[1]}, Size: {roi_width}x{roi_height}")
+    
+    inside = np.full(image_shape[0:2], False)
+    
+    # Beregn start- og slutpunkter for ROI baseret på forskydning og størrelse
+    center_pos_x = round(offcenter_xy[0] + 0.5 * image_shape[1])
+    center_pos_y = round(offcenter_xy[1] + 0.5 * image_shape[0])
+    start_x = center_pos_x - round(0.5 * roi_width)
+    start_y = center_pos_y - round(0.5 * roi_height)
+    end_x = start_x + round(roi_width)
+    end_y = start_y + round(roi_height)
+    
+    # sørger for at start- og slutkoordinater er indenfor billedets grænser
+    start_x = max(0, start_x)
+    start_y = max(0, start_y)
+    end_x = min(image_shape[1], end_x)
+    end_y = min(image_shape[0], end_y)
+    
+    # indstil ROI-masken til True for de pixels der er indenfor ROI
+    inside[start_y:end_y, start_x:end_x] = True
+    
+    return inside
 
 def get_roi_rectangle(image_shape,
                       roi_width=0, roi_height=0, offcenter_xy=(0, 0),
@@ -714,6 +782,67 @@ def get_outer_ring(radius):
 
     return mask
 
+def get_roi_aapm(image_info, paramset, zoom_level=1, zoom_center_x=0, zoom_center_y=0):
+    # Beregn billed-size i mm (baseret på pixel-spacing)
+    image_width_mm = image_info.shape[1] * image_info.pix[0]
+    image_height_mm = image_info.shape[0] * image_info.pix[1]
+    
+    # Bruger calculate_grid_dimensions() til at beregne rows og columns af ROIs
+    rows, cols, _, _ = calculate_grid_dimensions(
+        image_info,
+        image_width_mm, image_height_mm, paramset.aapm_roi_size,
+        zoom_level=zoom_level, zoom_center_x=zoom_center_x, zoom_center_y=zoom_center_y
+    )
+    
+    print(f"[DEBUG] Beregnet rows: {rows}, cols: {cols} for zoom-level: {zoom_level}")
+    
+    # Kontroller at der er flere end 0 rows og columns før ROI-generering
+    if rows == 0 or cols == 0:
+        print(f"[DEBUG] No valid ROIs can be generated due to zero rows or columns.")
+        return []
+    
+    # Opretter en tom liste til ROIs
+    roi_array = []
+    
+    # Beregner ROI-size i pixel (baseret på mm)
+    roi_width_in_pixels = paramset.aapm_roi_size / image_info.pix[0]
+    roi_height_in_pixels = paramset.aapm_roi_size / image_info.pix[1]
+    
+    # Tjek om ROI-størrelsen i pixels er passende
+    if roi_width_in_pixels > image_info.shape[1] or roi_height_in_pixels > image_info.shape[0]:
+        print("[ERROR] ROI size exceeds image dimensions!")
+        return []
+    
+    print("[DEBUG] ROI size i pixels: width: {roi_width_in_pixels}, height: {roi_height_in_pixels}")
+    
+    # Loop over gridet og genererer ROIs for hver celle
+    for row in range(rows):
+        for col in range(cols):
+            # Beregner ROI'ens placering baseret på rows og columns
+            offset_x = col * roi_width_in_pixels - (image_info.shape[1] // 2)
+            offset_y = row * roi_height_in_pixels - (image_info.shape[0] // 2)
+            
+            # Generer rektangulært ROI ved hjælp af hjælpefunktionen
+            roi = get_roi_rectangle_aapm(
+                image_info.shape, roi_width=roi_width_in_pixels,
+                roi_height=roi_height_in_pixels, offcenter_xy=(offset_x, offset_y)
+            )
+            
+            # Debug print for ROI generering
+            print(f"[DEBUG] Generating ROI at row {row}, col {col} with offset ({offset_x}, {offset_y})")
+            
+            # Tæller antallet af True og False værdier i ROI'en
+            num_true = np.count_nonzero(roi)
+            num_false = np.size - num_true
+            
+            print(f"[DEBUG] ROI at row {row}, col {col}: True count: {num_true}, False count: {num_false}")
+            
+            # Tilføj ROI til arrayet
+            roi_array.append(roi)
+            
+    print(f"[DEBUG] Total ROIs genereret: {len(roi_array)}")
+    
+    return roi_array
 
 def get_roi_hom(image_info,
                 paramset, delta_xya=[0, 0, 0.0], modality='CT'):

@@ -337,13 +337,13 @@ class MainWindow(QMainWindow):
             if self.wid_window_level.tb_wl.chk_wl_update.isChecked() is False:
                 self.wid_window_level.tb_wl.set_window_level('dcm', set_tools=True)
 
-        # Kald on_image_loaded for at opdatere grid-dimensioner
-        self.tab_xray.on_image_loaded(self.imgs[0])
-
         # Kontrollér om billeddata er tilgængelig
         if hasattr(self.imgs[0], 'image') and self.imgs[0].image is not None:
             self.current_image = self.imgs[0].image
             self.display_image(self.current_image)  # Vis billedet
+            
+            # Kald on_image_loaded for at opdatere grid-dimensioner
+            self.tab_xray.on_image_loaded(self.imgs[0])
         else:
             # Hent billeddata fra DICOM, hvis billeddata ikke er direkte tilgængelig
             dicom_file = self.imgs[0].filepath
@@ -353,6 +353,9 @@ class MainWindow(QMainWindow):
                 image_data = dicom_data.pixel_array
                 self.current_image = image_data  # Initialiser current_image
                 self.display_image(image_data)  # Vis billedet fra DICOM-data
+                
+                # Kald on_image_loaded for at opdatere grid-dimensioner
+                self.tab_xray.on_image_loaded(self.imgs[0])
             else:
                 print("[ERROR] Billeddata (pixel_array) ikke fundet i DICOM-filen.")
                 return  # Stop hvis der ikke er billeddata
