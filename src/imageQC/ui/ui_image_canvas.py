@@ -378,7 +378,7 @@ class ImageCanvas(GenericImageCanvas):
     def add_contours_to_all_rois(self, colors=None, reset_contours=True,
                                  roi_indexes=None, filled=False,
                                  labels=None, labels_pos='upper_left',
-                                 linestyles='solid',
+                                 linestyles=None,
                                  hatches=None):
         """Draw all ROIs in self.main.current_roi (list) with specific colors.
 
@@ -394,8 +394,8 @@ class ImageCanvas(GenericImageCanvas):
             if true used contourf (filled) instead
         labels : str, optional
             'upper_left' or 'center' relative to roi
-        linestyles : str, optional
-            fx 'dotted'. Default is 'solid'
+        linestyles : list of str, optional
+            Default is None == all solid
         hatches : list of str, optional
             Used if filled is True. Default is None.
         """
@@ -407,28 +407,33 @@ class ImageCanvas(GenericImageCanvas):
             self.contours = []
         if colors is None:
             colors = ['red' for i in range(len(this_roi))]
+        if linestyles is None:
+            linestyles = ['solid' for i in range(len(this_roi))]
         if roi_indexes is None:
             roi_indexes = list(np.arange(len(this_roi)))
 
-        for color_no, roi_no in enumerate(roi_indexes):
+        for i, roi_no in enumerate(roi_indexes):
+            color_no = i % len(colors)
+            linestyle_no = i % len(linestyles)
             mask = np.where(this_roi[roi_no], 0, 1)
             if filled:
                 if hatches is None:
                     contour = self.ax.contourf(
                         mask, levels=[0, 0.5], colors=colors[color_no], alpha=0.3)
                 else:
+                    hatch_no = i % len(hatches)
                     contour = self.ax.contourf(
                         mask, levels=[0, 0.5], colors='none',
-                        hatches=hatches[color_no])
+                        hatches=hatches[hatch_no])
                     contour.collections[0].set_edgecolor(colors[color_no])
             else:
                 contour = self.ax.contour(
                     mask, levels=[0.9],
                     colors=colors[color_no], alpha=0.5, linewidths=self.linewidth,
-                    linestyles=linestyles)
+                    linestyles=linestyles[linestyle_no])
             if labels:
                 try:
-                    label = labels[color_no]
+                    label = labels[i]
                     mask_pos = np.where(mask == 0)
                     if labels_pos == 'center':
                         xpos = np.mean(mask_pos[1]) - 2
@@ -873,6 +878,19 @@ class ImageCanvas(GenericImageCanvas):
         """Draw NM uniformity ROI."""
         self.add_contours_to_all_rois(colors=['red', 'blue'])
 
+    def Var(self):
+        #  [roi_small, roi_percent, roi_percent_valid, roi_mask, roi_mask_valid]
+        self.add_contours_to_all_rois(
+            colors=['blue', 'blue'], roi_indexes=[0, 1, 2],
+            linestyles=['solid', 'dotted', 'dashed'])
+        if self.main.current_roi[3] is not None:
+            self.add_contours_to_all_rois(
+                colors=['red'], roi_indexes=[3],
+                filled=True, hatches=['////'], reset_contours=False)
+            self.add_contours_to_all_rois(
+                colors=['red'], roi_indexes=[4],
+                linestyles=['dashed'], reset_contours=False)
+
 
 class ResultImageCanvas(GenericImageCanvas):
     """Canvas for display of results as image."""
@@ -1000,7 +1018,7 @@ class ResultImageCanvas(GenericImageCanvas):
                         self.current_image = details_dict['averages']
                     elif sel_txt == 'SNR pr ROI map':
                         self.current_image = details_dict['snrs']
-                    elif sel_txt == 'Variance pr ROI map':
+                    elif sel_txt == 'Average variance pr ROI map':
                         self.current_image = details_dict['variances']
                     elif sel_txt == 'Average pr ROI (% difference from global average)':
                         self.current_image = details_dict['diff_averages']
@@ -1175,8 +1193,11 @@ class ResultImageCanvas(GenericImageCanvas):
             details_dict = self.main.results['Var']['details_dict'][
                 self.main.gui.active_img_no]
             self.cmap = 'viridis'
-            self.title = (
-                f'Variance image of central {self.main.current_paramset.var_percent} %')
+            self.title = 'Variance image'
+            if self.main.current_paramset.var_percent < 100:
+                self.title = (
+                    f'{self.title} of central '
+                    f'{self.main.current_paramset.var_percent} %')
             self.current_image = details_dict['variance_image']
         except KeyError:
             pass

@@ -465,6 +465,8 @@ class ParamSetXray(ParamSetCommon):
     aapm_grid_auto: bool = True                # Automatisk grid
     aapm_grid_rows: int = 0                    # Antal rækker af ROIs
     aapm_grid_cols: int = 0                    # Antal kolonner af ROIs
+    aapm_ignore_outside_rois: bool = True      # Ignorer ROIs uden for billedet
+    aapm_roi_size_in_pixels: float = 0.0       # Beregnes baseret på pixel spacing
 
     # Maksimal bredde og højde for Xray-billeder
     aapm_max_width_mm: float = 500.0
@@ -480,6 +482,9 @@ class ParamSetXray(ParamSetCommon):
     aapm_zoom_level: float = 1.0               # Zoom-faktor (1.0 = ingen zoom)
     aapm_zoom_center_x: float = 0.0            # Zoom-center X-koordinat
     aapm_zoom_center_y: float = 0.0            # Zoom-center Y-koordinat
+    
+    # Parameter for AAPM-initialisering
+    aapm_initialized: bool = False  # Tilføjet for at spore AAPM-initialisering
 
 @dataclass
 class ParamSetMammo(ParamSetCommon):
