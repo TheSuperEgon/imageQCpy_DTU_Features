@@ -32,7 +32,7 @@ def calculate_grid_dimensions(image_width_mm, image_height_mm, roi_size_mm, zoom
     zoomed_height_mm = image_height_mm / zoom_factor
     
     # Tilføj debugging-print for at sikre korrekt zoom
-    print(f"[DEBUG calculate_grid_dimensions()] Zoomet bredde: {zoomed_width_mm} mm, Zoomet højde: {zoomed_height_mm} mm")
+    print(f"[calculate_grid_dimensions()] Zommed bredde: {zoomed_width_mm} mm, Zoomet højde: {zoomed_height_mm} mm")
     
     # Kontroller at ROI-størrelsen er valid
     if roi_size_mm <= 0:
@@ -49,11 +49,11 @@ def calculate_grid_dimensions(image_width_mm, image_height_mm, roi_size_mm, zoom
 
     print(f"[calculate_grid_dimensions()]  Sidste række højde: {last_row_height}, Sidste kolonne bredde: {last_col_width}")
 
-    # Juestering af sidste række og kolonne
-    if last_row_height >= 0.5 * roi_size_mm:
-        rows += 1  # inkluderer ekstra række hvis højde er stor nok
-    if last_col_width >= 0.5 * roi_size_mm:
-        cols += 1 # samme for kolonne
+    # Juestere sidste række/kolonne, hvis mindre end hel ROI tilbage
+    if last_row_height < roi_size_mm:
+        print(f"[calculate_grid_dimensions()] Reducerer antal rækker til {rows} for at undgå overlappende ROIs.")
+    if last_col_width < roi_size_mm:
+        print(f"[calculate_grid_dimensions()] Reducerer antal kolonner til {cols} for at undgå overlappende ROIs.")
 
     print(f"[DEBUG calculate_grid_dimensions()] Endelige rækker: {rows}, Endelige kolonner: {cols}")
 

@@ -370,71 +370,80 @@ class MainWindow(QMainWindow):
         self.tree_file_list.update_file_list()
         self.current_sort_pattern = None
 
-    def display_image(self, image, extent=None):
-        """Vis billedet i GUI'en via Matplotlib canvas."""
+    def display_image(self, image):
+        """Vis det fulde billede i GUI'en og tilføj rødt kryds i midten."""
         if image is None:
             print("[ERROR display_image()] Intet billede indlæst.")
             return
     
         # Sørg for, at canvas er klar til at vise billedet
         self.wid_image_display.canvas.ax.clear()
-        
-        # Beregn zoom-faktoren og udsnit for visning
-        zoom_level = self.tab_xray.zoom_slider.value() if hasattr(self.tab_xray, 'zoom_slider') else 1
-        
-        # Hvis billedet er gråtone, hvis det som sådan
-        if len(image.shape) == 2:
-            if zoom_level == 1:  # bevar originalt aspektforhold
-                self.wid_image_display.canvas.ax.imshow(image, cmap='gray', aspect='equal')
-            else:  # for andre zoom-levels, tillad auto-justering af aspect
-                self.wid_image_display.canvas.ax.imshow(image, cmap='gray', aspect='auto')
-        else:  # Farvebillede
-            if zoom_level == 1:
-                self.wid_image_display.canvas.ax.imshow(image, aspect='equal')
-            else:
-                self.wid_image_display.canvas.ax.imshow(image, aspect='auto')
     
-        # Fjern aksevisningen
+        # Hvis billedet er gråtone, vis det som sådan
+        if len(image.shape) == 2:
+            self.wid_image_display.canvas.ax.imshow(image, cmap='gray', aspect='equal')
+        else:  # Farvebillede
+            self.wid_image_display.canvas.ax.imshow(image, aspect='equal')
+    
+        # Tilføjer det røde kryds for at dele billed i fire kvadranter
+        img_height, img_width = image.shape[:2]
+        center_x = img_width // 2
+        center_y = img_height // 2
+    
+        # Tegn det røde kryds med linjer gennem midten af billedet
+        self.wid_image_display.canvas.ax.axvline(center_x, color='red', linewidth=1)
+        self.wid_image_display.canvas.ax.axhline(center_y, color='red', linewidth=1)
+    
+        # Fjern aksevisningen og opdater visningen
         self.wid_image_display.canvas.ax.axis('off')
-        
-        # Opdater visningen
         self.wid_image_display.canvas.draw()
 
     def update_image_view(self, zoom_level, zoom_center_x, zoom_center_y):
-        """Opdater billedevisningen baseret på zoom-niveau og center."""
-        
+        """Opdater ROI-griddet baseret på zoom-niveau og center uden at ændre billedevisningen."""
+    
+        # Sørg for, at funktionen kun køres, hvis AAPM-metoden er valgt
         if self.tab_xray.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
-            if not hasattr(self, 'current_image') or self.current_image is None:
-                print("[ERROR update_image_view()] current_image er ikke initialiseret.")
-                return
+            # Check om zoom-niveauet er 4 eller højere for at generere ROI-grid
+            if zoom_level < 4:
+                print("[INFO update_image_view()] Zoom-niveau er for lavt til auto-generering af grid.")
+                self.aapm_auto_rows_value.setText('N/A')
+                self.aapm_auto_cols_value.setText('N/A')
+                return  # Afslut funktionen, da vi ikke genererer ROI-grid ved zoom-niveauer under 4
     
-            # Hent originalbilledet
-            original_image = self.current_image.copy()
+            # Beregn kun ROI-grid uden at ændre selve billedvisningen
+            image_width_mm = self.main.current_image_width_mm
+            image_height_mm = self.main.current_image_height_mm
+            roi_size_mm = self.main.current_paramset.aapm_roi_size
     
-            # Hvis zoom_level er 1, vis hele billedet uden zoom
-            if zoom_level == 1:
-                self.display_image(original_image)
-                return
+            # Kald calculate_grid_dimensions for at beregne antal rækker og kolonner i griddet
+            rows, cols, _, _, _, _ = calculate_grid_dimensions(
+                image_width_mm, image_height_mm, roi_size_mm,
+                zoom_level=zoom_level,
+                zoom_center_x=zoom_center_x,
+                zoom_center_y=zoom_center_y
+            )
     
-            zoom_factor = 1 + (zoom_level - 1) * 0.7  # Juster faktor efter behov
+            # Opdater GUI-elementerne med de beregnede dimensioner
+            self.aapm_auto_rows_value.setText(str(rows))
+            self.aapm_auto_cols_value.setText(str(cols))
     
-            # Beregn dimensioner for zoomet område
-            zoomed_width = int(original_image.shape[1] / zoom_factor)
-            zoomed_height = int(original_image.shape[0] / zoom_factor)
+            # Opdater parametrene i paramset og beregn ROIs
+            self.main.current_paramset.aapm_grid_rows = rows
+            self.main.current_paramset.aapm_grid_cols = cols
     
-            # Beregn start- og slutposition for zoom-området baseret på zoom-center
-            start_x = int(max(0, zoom_center_x - zoomed_width // 2))
-            start_y = int(max(0, zoom_center_y - zoomed_height // 2))
-            end_x = int(min(start_x + zoomed_width, original_image.shape[1]))
-            end_y = int(min(start_y + zoomed_height, original_image.shape[0]))
-    
-            # Udskær zoomet område og opdaterer current_image
-            zoomed_image = original_image[start_y:end_y, start_x:end_x]
-            
-            
-            self.display_image(zoomed_image)
+            # Opdater ROI’erne uden at ændre visningen af billedet
+            self.main.update_roi()
         else:
             print("[Info update_image_view()] zoom-funktionalitet kun tilgængelig for AAPM.")
+    
+    def clear_roi_display(self):
+        """Fjerner det visuelle ROI-grid fra billedvinduet."""
+        if hasattr(self, 'wid_image_display') and hasattr(self.wid_image_display, 'canvas'):
+            # Kalder remove_annotations til at rydde ROIs
+            self.wid_image_display.canvas.remove_annotations()
+            # Opdater billedvisningen
+            self.wid_image_display.canvas.draw_idle()
+            print("[INFO clear_roi_display()] ROI-grid fjernet fra billedvinduet.")
         
     def read_header(self):
         """View file as header."""

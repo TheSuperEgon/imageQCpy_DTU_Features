@@ -678,7 +678,7 @@ def calculate_aapm_rois(image_info, paramset, call_id=None):
     print(f"[DEBUG calculate_aapm_rois()] Call ID: {call_id}")
     print(f"[DEBUG calculate_aapm_rois()] paramset.aapm_initialized={paramset.aapm_initialized}, paramset.aapm_zoom_level={paramset.aapm_zoom_level}")
     
-    # Tidlig returnering, hvis AAPM ikke er initialiseret korrekt eller zoomniveau er under 4
+    # Tidlig return hvis AAPM ikke er initialiseret korrekt eller zoom-level er under 4
     if not paramset.aapm_initialized or paramset.aapm_zoom_level < 4:
         print(f"[INFO calculate_aapm_rois()] Call ID: {call_id} - AAPM ikke initialiseret korrekt eller zoomniveau under 4. Afslutter.")
         return []
@@ -687,38 +687,55 @@ def calculate_aapm_rois(image_info, paramset, call_id=None):
         rows = paramset.aapm_grid_rows
         cols = paramset.aapm_grid_cols
         
-        # Tjekker om zoom-center-x/y eksiterer 
-        zoom_center_x = getattr(paramset, 'zoom_center_x', image_info.shape[1] // 2)  # default til midten af billed
-        zoom_center_y = getattr(paramset, 'zoom_center_y', image_info.shape[0] // 2)
+        # Hent zoomcenter-koordinater fra paramset
+        zoom_center_x = paramset.aapm_zoom_center_x
+        zoom_center_y = paramset.aapm_zoom_center_y
         
-        print(f"[calculate_aapm_rois] Zoom center ({zoom_center_x}, {zoom_center_y}) for call ID {call_id}")
+        print(f"[calculate_aapm_rois] Anvender zoom center: ({zoom_center_x}, {zoom_center_y}) for call ID {call_id}")
         
-        # hvis rows eller cols er nul, afsluttes tidligt
-        if rows == 0 or cols == 0:
-            print("[calculate_aapm_rois] rows eller columns er nul. Ingen ROIs genereres.")
-            return []
-        
+        # Brug pixel spacing fra paramset
+        pixel_spacing_x = paramset.pixel_spacing_x
+        pixel_spacing_y = paramset.pixel_spacing_y
+
         # Beregn zoomet billeddimensions ved bruge calculate_grid_dimensions()
         _, _, _, _, zoomed_width, zoomed_height = calculate_grid_dimensions(
-            image_info.shape[1] * image_info.pix[0], image_info.shape[0] * image_info.pix[1],
+            image_info.shape[1] * pixel_spacing_x, image_info.shape[0] * pixel_spacing_y,
             paramset.aapm_roi_size, paramset.aapm_zoom_level, zoom_center_x, zoom_center_y)
 
         # ROI-størrelse i pixels
-        roi_size_in_pix = paramset.aapm_roi_size / image_info.pix[0]
-        
-        # Udskriv for at debugge zoomede dimensioner og ROI-størrelser
-        print(f"[DEBUG calculate_aapm_rois] Zoomed width: {zoomed_width} mm, Zoomed height: {zoomed_height} mm")
-        print(f"[DEBUG calculate_aapm_rois] Beregnet ROI størrelse i pixels: {roi_size_in_pix}")
+        roi_size_in_pix = paramset.aapm_roi_size / pixel_spacing_x
 
-        # Start position baseret på zoom-center og zoomet område
-        start_x = int(zoom_center_x - (cols // 2) * roi_size_in_pix)
-        start_y = int(zoom_center_y - (rows // 2) * roi_size_in_pix)
-
-        # Begræns startkoordinater til de zoomede billeddimensioner
-        start_x = max(0, min(start_x, int(zoomed_width / image_info.pix[0]) - cols * roi_size_in_pix))
-        start_y = max(0, min(start_y, int(zoomed_height / image_info.pix[1]) - rows * roi_size_in_pix))
+        # Justering af start_x og start_y baseret på zoom center valget
+        if zoom_center_x == -image_info.shape[1] // 2 and zoom_center_y == -image_info.shape[0] // 2:
+            # Top-left
+            start_x = int(-image_info.shape[1] / 2 + (zoomed_width / 2 - cols * roi_size_in_pix / 2))
+            start_y = int(-image_info.shape[0] / 2 + (zoomed_height / 2 - rows * roi_size_in_pix / 2))
         
-        print(f"[calculate_aapm_rois] Start position for ROIs: start_x = {start_x}, start_y = {start_y}")
+        elif zoom_center_x == -image_info.shape[1] // 2 and zoom_center_y == image_info.shape[0] // 2:
+            # Bottom-left
+            start_x = int(-image_info.shape[1] / 2 + (zoomed_width / 2 - cols * roi_size_in_pix / 2))
+            start_y = int(image_info.shape[0] / 2 - (zoomed_height / 2 + rows * roi_size_in_pix / 2))
+        
+        elif zoom_center_x == image_info.shape[1] // 2 and zoom_center_y == -image_info.shape[0] // 2:
+            # Top-right
+            start_x = int(image_info.shape[1] / 2 - (zoomed_width / 2 + cols * roi_size_in_pix / 2))
+            start_y = int(-image_info.shape[0] / 2 + (zoomed_height / 2 - rows * roi_size_in_pix / 2))
+        
+        elif zoom_center_x == image_info.shape[1] // 2 and zoom_center_y == image_info.shape[0] // 2:
+            # Bottom-right
+            start_x = int(image_info.shape[1] / 2 - (zoomed_width / 2 + cols * roi_size_in_pix / 2))
+            start_y = int(image_info.shape[0] / 2 - (zoomed_height / 2 + rows * roi_size_in_pix / 2))
+        
+        else:
+            # Center
+            start_x = int(zoom_center_x - (cols * roi_size_in_pix / 2))
+            start_y = int(zoom_center_y - (rows * roi_size_in_pix / 2))
+
+        # Debug-prints for start- og slutkoordinater
+        slut_x = start_x + cols * roi_size_in_pix
+        slut_y = start_y + rows * roi_size_in_pix
+        print(f"[DEBUG calculate_aapm_rois] Start x: {start_x}, Start y: {start_y}")
+        print(f"[DEBUG calculate_aapm_rois] Slut x: {slut_x}, Slut y: {slut_y}")
         
         rois = []
         roi_count = 0  # Tæller for ROIs
@@ -731,8 +748,8 @@ def calculate_aapm_rois(image_info, paramset, call_id=None):
                 roi_x = start_x + col * roi_size_in_pix
                 roi_y = start_y + row * roi_size_in_pix
                 
-                # Tjek om ROI er inden for zoomede grænser
-                if roi_x + roi_size_in_pix <= zoomed_width / image_info.pix[0] and roi_y + roi_size_in_pix <= zoomed_height / image_info.pix[1]:
+                # Tjekker om ROI er inden for zoomede grænser
+                if roi_x + roi_size_in_pix <= slut_x and roi_y + roi_size_in_pix <= slut_y:
                     roi = get_roi_rectangle(image_info.shape, int(roi_size_in_pix), int(roi_size_in_pix), (roi_x, roi_y))
                     rois.append(roi)
                     roi_count += 1
@@ -744,6 +761,8 @@ def calculate_aapm_rois(image_info, paramset, call_id=None):
                     total_false += false_values
                     
                     print(f"[calculate_aapm_rois] ROI #{roi_count} placeret ved (x={roi_x}, y={roi_y}), True-værdier: {true_values}, False-værdier: {false_values}")
+                else:
+                    print(f"[calculate_aapm_rois] ROI ved (x={roi_x}, y={roi_y}) falder uden for zoomede grænser og bliver ikke genereret.")
             
         print(f"[calculate_aapm_rois] Antal ROIs genereret: {roi_count}")
         print(f"[calculate_aapm_rois] Total antal True-værdier: {total_true}, False-værdier: {total_false}")

@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import qApp
 
 # imageQC block start
 from imageQC.scripts import dcm
-from imageQC.scripts.calculate_roi import (get_rois, get_roi_circle, get_roi_SNI)
+from imageQC.scripts.calculate_roi import (get_rois, get_roi_circle, get_roi_SNI, calculate_aapm_rois)
 import imageQC.scripts.mini_methods_format as mmf
 import imageQC.scripts.mini_methods as mm
 import imageQC.scripts.mini_methods_calculate as mmcalc
@@ -1198,6 +1198,8 @@ def calculate_2d(image2d, roi_array, image_info, modality,
                     values = avgs + stds
                 elif alt == 3:
                     flatfield = True
+                elif alt == 4:
+                    aapm = True
                 else:
                     avg_all = np.sum(avgs) / len(avgs)
                     diffs = [(avg - avg_all) for avg in avgs]
@@ -1250,11 +1252,52 @@ def calculate_2d(image2d, roi_array, image_info, modality,
                         headers_sup=headers_sup, values_sup=values_sup,
                         details_dict=details)
 
+        # Kald calculate_aapm med rois og håndter resultater
+        if aapm:
+            if image2d is not None:
+                # Generer ROIs og beregn AAPM-statistikker
+                rois = calculate_aapm_rois(image_info, paramset)
+                aapm_details = calculate_aapm(rois, image2d)
+        
+                if aapm_details:
+                    # Beregn værdier baseret på aapm_details output
+                    values = [
+                        aapm_details['Avg Signal'],
+                        aapm_details['Avg Noise'],
+                        aapm_details['Avg SNR'],
+                        aapm_details['Local Non-uniformity'],
+                        aapm_details['Global Non-uniformity'],
+                        aapm_details['Min Signal'],
+                        aapm_details['Max Signal'],
+                        aapm_details['ROI Count'],
+                        aapm_details['Avg Dev'],
+                        aapm_details['SNR Std Dev']
+                    ]
+        
+                    # Hvis vi har brug for masked image eller yderligere værdier:
+                    masked_image = np.ma.masked_array(image2d, mask=None)  # Tilføj mask hvis nødvendigt
+        
+                    values_sup = [
+                        np.min(masked_image), np.max(masked_image),
+                        np.min(values), np.max(values),
+                        np.std(values), aapm_details['ROI Count']
+                    ]
+        
+                    # Konstruer et Results objekt
+                    res = Results(
+                        headers=headers, values=values,
+                        headers_sup=headers_sup, values_sup=values_sup,
+                        details_dict=aapm_details
+                    )
+        
+        # Hvis der ikke er blevet tildelt res, tildel en default res
         if res is None:
             res = Results(headers=headers, values=values,
                           headers_sup=headers_sup, values_sup=values_sup,
                           alternative=alt)
+        
         return res
+    
 
     def HUw():
         headers = copy.deepcopy(HEADERS[modality][test_code]['alt0'])
@@ -3715,6 +3758,77 @@ def calculate_flatfield_mammo(image2d, mask_max, mask_outer, image_info, paramse
                'roi_mask': roi_mask}
 
     return details
+
+
+def calculate_aapm(rois, image2d):
+    """Beregner AAPM-relaterede værdier, herunder non-uniformitet."""
+    try:
+        # Beregning af gennemsnitssignal og støj (standardafvigelse) for hver ROI
+        avg_signals = []
+        std_devs = []  # Standardafvigelser for hver ROI, som afspejler støj/variation inden for hver ROI
+        
+        for i, roi in enumerate(rois):
+            # Opret en maske for den nuværende ROI
+            roi_mask = np.zeros(image2d.shape, dtype=bool)
+            roi_mask[roi] = True  # Antager at roi indeholder koordinater til ROI'en
+
+            # Beregn gennemsnit og standardafvigelse for den nuværende ROI
+            avg_signal = np.mean(image2d[roi_mask])
+            std_dev = np.std(image2d[roi_mask])
+
+            avg_signals.append(avg_signal)
+            std_devs.append(std_dev)
+
+        print("Avg Signals for each ROI:", avg_signals)
+
+        # Beregn overordnet gennemsnitssignal og gennemsnitlig støj på tværs af alle ROIs
+        avg_signal_overall = np.mean(avg_signals)
+        avg_noise = np.mean(std_devs)
+
+        # Beregn SNR for hver ROI
+        snrs = [avg / noise if noise != 0 else None for avg, noise in zip(avg_signals, std_devs)]
+        avg_snr = np.mean([snr for snr in snrs if snr is not None])
+
+        local_non_uniformity_values = []
+        for i in range(len(avg_signals) - 1):
+            avg1 = avg_signals[i]
+            avg2 = avg_signals[i + 1]
+            avg_sum = (avg1 + avg2) / 2
+            if avg_sum != 0:
+                diff = abs(avg1 - avg2) / avg_sum  # Normaliseret forskel
+                local_non_uniformity_values.append(diff)
+            else:
+                # Hvis gennemsnittet er 0, skal vi undgå at beregne diff og eventuelt tilføje 0
+                local_non_uniformity_values.append(0)
+
+        local_non_uniformity = np.mean(local_non_uniformity_values) if local_non_uniformity_values else 0
+
+        # Global non-uniformitet som normaliseret forskel mellem maks og min af gennemsnitssignalet for ROIs
+        global_min_signal = np.min(avg_signals)
+        global_max_signal = np.max(avg_signals)
+        global_non_uniformity = (global_max_signal - global_min_signal) / avg_signal_overall if avg_signal_overall != 0 else 0
+        print(f"Global Max Signal: {global_max_signal}, Global Min Signal: {global_min_signal}")
+
+
+        # Opsummering af beregnede værdier
+        aapm_details = {
+            'Avg Signal': avg_signal_overall,
+            'Avg Noise': avg_noise,
+            'Avg SNR': avg_snr,
+            'Local Non-uniformity': local_non_uniformity,
+            'Global Non-uniformity': global_non_uniformity,
+            'Min Signal': global_min_signal,
+            'Max Signal': global_max_signal,
+            'ROI Count': len(rois),
+            'Avg Dev': np.std(avg_signals),
+            'SNR Std Dev': np.std([snr for snr in snrs if snr is not None]),
+        }
+
+        return aapm_details
+
+    except Exception as e:
+        print(f"[ERROR calculate_aapm] Fejl: {e}")
+        return None
 
 
 def get_corrections_point_source(

@@ -11,6 +11,7 @@ import pandas as pd
 from pathlib import Path
 import math
 from imageQC.scripts.utils import calculate_grid_dimensions
+from imageQC.scripts.calculate_roi import calculate_aapm_rois
 
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
@@ -32,6 +33,7 @@ from imageQC.ui.tag_patterns import TagPatternTreeTestDCM
 from imageQC.scripts.calculate_qc import calculate_qc
 from imageQC.scripts.mini_methods import get_all_matches
 from imageQC.ui.ui_dialogs import ImageQCDialog
+from imageQC.ui.ui_image_canvas import ImageCanvas
 # imageQC block end
 
 
@@ -1613,6 +1615,10 @@ class ParamsTabXray(ParamsTabCommon):
                 paramset.aapm_zoom_level = 4  # Eksplicit opdatering af aapm_zoom_level
                 self.zoom_initialized = True  # Markerer at initialiseringen er sket
                 print("[INFO update_enabled()] Zoom-niveau sat til 4 ved initialisering for AAPM.")
+                
+                # Tving opdatering af zoom 
+                self.processing_flag = False  # Nulstil for at tillade kald af update_zoom
+                self.update_zoom()
 
             # Vis zoom-elementer kun for AAPM-metoden
             self.toggle_visibility([self.zoom_slider, self.zoom_center_dropdown], [])
@@ -1926,94 +1932,110 @@ class ParamsTabXray(ParamsTabCommon):
         hlo_flat_widget_aapm.addLayout(vlo_right_aapm)
 
     def update_zoom_center(self):
-        """Opdater zoom-center baseret på brugerens valg."""
+        """Opdater zoom-center baseret på brugerens valg i forhold til billedets dimensioner."""
+        # Check om der er et billede indlæst i ImageQC
         if not hasattr(self.main, 'current_image') or self.main.current_image is None:
             print("[ERROR update_zoom_center()] current_image er ikke initialiseret.")
             return  # Stop funktionen, hvis der ikke er noget billede at zoome på
-
+    
+        # Få billedets dimensioner og pixel spacing
+        width_pixels = self.main.current_image.shape[1]
+        height_pixels = self.main.current_image.shape[0]
+        paramset = self.main.current_paramset
+    
+        # Beregn ROI-størrelse i pixels
+        roi_size_in_pix = paramset.aapm_roi_size / paramset.pixel_spacing_x
+    
+        # Beregn antal rækker og kolonner for grid baseret på zoom-niveau og billede
+        rows, cols, _, _, _, _ = calculate_grid_dimensions(
+            width_pixels * paramset.pixel_spacing_x,  # billede-bredde i mm
+            height_pixels * paramset.pixel_spacing_y,  # -højde i mm
+            paramset.aapm_roi_size,                    # ROI-size i mm
+            paramset.aapm_zoom_level                   
+        )
+    
+        # Få brugerens valg fra dropdown-menuen og opdater zoom-centeret
         selected_center = self.zoom_center_dropdown.currentText()
-
+    
+        # Justér zoomcenter-koordinater baseret på valg
         if selected_center == 'Center':
-            self.zoom_center_x = self.main.current_image.shape[1] // 2
-            self.zoom_center_y = self.main.current_image.shape[0] // 2
+            self.zoom_center_x = 0
+            self.zoom_center_y = 0
         elif selected_center == 'Top-left':
-            self.zoom_center_x = 0
-            self.zoom_center_y = 0
+            self.zoom_center_x = -width_pixels / 2 + (cols * roi_size_in_pix) / 2
+            self.zoom_center_y = -height_pixels / 2 + (rows * roi_size_in_pix) / 2
         elif selected_center == 'Top-right':
-            self.zoom_center_x = self.main.current_image.shape[1]
-            self.zoom_center_y = 0
+            self.zoom_center_x = width_pixels / 2 - (cols * roi_size_in_pix) / 2
+            self.zoom_center_y = -height_pixels / 2 + (rows * roi_size_in_pix) / 2
         elif selected_center == 'Bottom-left':
-            self.zoom_center_x = 0
-            self.zoom_center_y = self.main.current_image.shape[0]
+            self.zoom_center_x = -width_pixels / 2 + (cols * roi_size_in_pix) / 2
+            self.zoom_center_y = height_pixels / 2 - (rows * roi_size_in_pix) / 2
         elif selected_center == 'Bottom-right':
-            self.zoom_center_x = self.main.current_image.shape[1]
-            self.zoom_center_y = self.main.current_image.shape[0]
-
-        # Når centeret er opdateret, zoom ind på det valgte område
+            self.zoom_center_x = width_pixels / 2 - (cols * roi_size_in_pix) / 2
+            self.zoom_center_y = height_pixels / 2 - (rows * roi_size_in_pix) / 2
+    
+        # Opdater paramset med de nye zoomcenter-koordinater
+        paramset.aapm_zoom_center_x = self.zoom_center_x
+        paramset.aapm_zoom_center_y = self.zoom_center_y
+    
+        # Kald `update_zoom` for at opdatere zoom-niveau og ROI-grid baseret på de nye center-koordinater
         self.update_zoom()
 
     def update_zoom(self):
-        """Opdater zoom-niveau og billedevisning, når slideren ændres."""
+        """Opdater zoom-niveau og ROI-griddet baseret på zoom-sliderens værdi."""
         # Tjekker om en opdatering allerede er i gang
         if self.processing_flag:
             print("[INFO update_zoom()] Processing already in progress, skipping this call.")
             return
-
-        self.processing_flag = True
-     
+        
+        self.processing_flag = True  # Sæt processing flag
         zoom_level = self.zoom_slider.value()
         self.main.current_paramset.aapm_zoom_level = zoom_level  # Opdater aapm_zoom_level
         print(f"[DEBUG update_zoom()] Zoom-niveau opdateret til: {zoom_level}")
-    
-        # Kontrollerer at AAPM-metoden er valgt
+        
         if self.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
+            # Hvis zoom-niveauet er under 4, fjern ROI-griddet
             if zoom_level < 4:
                 print("[INFO update_zoom()] Zoom-niveau er for lavt til auto-generering af grid.")
                 self.aapm_auto_rows_value.setText('N/A') 
                 self.aapm_auto_cols_value.setText('N/A')  
-    
-                # Viser hele billed når zoom-level er 1
-                if zoom_level == 1:
-                    self.main.display_image(self.main.current_image)  # Vis hele billed uden zoom
-                else:
-                    zoom_factor = 1 + (zoom_level - 1) * 0.7
-                    self.main.update_image_view(zoom_level, self.zoom_center_x, self.zoom_center_y)  
-    
-                # Nulstil processing-flaget og afslut
+                
+                # Ryd visningen af ROI-griddet ved at kalde `clear_roi_display()`
+                self.main.clear_roi_display()
+                
                 self.processing_flag = False
-                return
-    
-            # Hvis zoom-niveauet er 4 eller højere, beregn og vis grid
+                return  # Afslut funktionen, da grid ikke genereres ved niveau under 4
+            
+            # Hvis zoom-niveauet er 4 eller højere, beregn og vis ROI-griddet
             if hasattr(self.main, 'current_image') and self.main.current_image is not None:
                 # Beregn grid-dimensioner
                 image_width_mm = self.main.current_image_width_mm
                 image_height_mm = self.main.current_image_height_mm
                 roi_size_mm = self.main.current_paramset.aapm_roi_size
-    
-                rows, cols, last_row_height, last_col_width, zoomed_width, zoomed_height = calculate_grid_dimensions(
+        
+                # Beregn rækker og kolonner for griddet baseret på zoom-niveau og centrum
+                rows, cols, _, _, _, _ = calculate_grid_dimensions(
                     image_width_mm, image_height_mm, roi_size_mm,
                     zoom_level=zoom_level,
                     zoom_center_x=self.zoom_center_x,
                     zoom_center_y=self.zoom_center_y
                 )
-    
-                # Opdater GUI med beregnede dimensioner
+        
+                # Opdater GUI med de beregnede dimensioner
                 self.aapm_auto_rows_value.setText(str(rows))
                 self.aapm_auto_cols_value.setText(str(cols))
-    
+        
                 # Opdater paramset med de nye grid-dimensioner
                 self.main.current_paramset.aapm_grid_rows = rows
                 self.main.current_paramset.aapm_grid_cols = cols
-    
-                # Opdater billedevisning og ROI'er
-                self.main.update_image_view(zoom_level, self.zoom_center_x, self.zoom_center_y)  
-                self.main.update_roi()  # Sikre at ROIs opdateres korrekt
-        else:
-            print("[INFO update_zoom()] Zoom-funktionalitet er deaktiveret for denne metode.")
         
-        # Nulstiller processing-flag efter opdatering
+                # Generer ROI’er og tegn griddet
+                self.main.current_roi = calculate_aapm_rois(self.main.current_image, self.main.current_paramset)
+                self.main.wid_image_display.canvas.roi_draw()  # Brug Ellens funktion til at tegne ROIs
+                print("[INFO update_zoom()] ROI-grid opdateret og tegnet ved zoom-niveau 4 eller højere.")
+            
+        # Rydder processing-flaget efter opdateringen
         self.processing_flag = False
-        print("[INFO update_zoom()] Zoom opdatering færdig.")
 
     def on_image_loaded(self, image):
         """Funktion der kaldes, når et billede indlæses."""
@@ -2022,18 +2044,22 @@ class ParamsTabXray(ParamsTabCommon):
         if hasattr(image, 'shape'):
             height_pixels, width_pixels = image.shape[:2]  # Højde og bredde i pixels
 
-            # Brug 'pix' (pixel_spacing) til at finde pixel-størrelse og beregne millimeter
+            # Brug 'pix' (pixel_spacing) til at finde pixel-størrelse og beregne mm.
             if hasattr(image, 'pix') and len(image.pix) >= 2:
                 pixel_spacing_x, pixel_spacing_y = image.pix[:2]  # Pixelstørrelse i mm
                 print(f'[DEBUG on_image_loaded()] Pixel spacing: {pixel_spacing_x} mm, {pixel_spacing_y} mm')
+                
+                # Gemmer pixel_spacing i paramset for at sikre adgang i fremtidige beregninger
+                self.main.current_paramset.pixel_spacing_x = pixel_spacing_x
+                self.main.current_paramset.pixel_spacing_y = pixel_spacing_y
 
-                # Beregn billedstørrelse i millimeter
+                # Beregn billedstørrelse i mm.
                 self.main.current_image_width_mm = width_pixels * pixel_spacing_x
                 self.main.current_image_height_mm = height_pixels * pixel_spacing_y
 
-                # Debugging - Udskriv billedstørrelse i millimeter
-                print(f'[DEBUG on_image_loaded()] Image width in mm: {self.main.current_image_width_mm}')
-                print(f'[DEBUG on_image_loaded()] Image height in mm: {self.main.current_image_height_mm}')
+                # Udskriver billedstørrelse i mm.
+                print(f'[DEBUG on_image_loaded()] Image width i mm: {self.main.current_image_width_mm}')
+                print(f'[DEBUG on_image_loaded()] Image height i mm: {self.main.current_image_height_mm}')
 
                 # Tjek om dropdown-menuen har "Center" valgt som standard
                 if self.zoom_center_dropdown.currentText() == 'Center':
