@@ -771,7 +771,6 @@ def calculate_aapm_rois(image_info, paramset, call_id=None):
     except Exception as e:
         print(f"[ERROR calculate_aapm_rois] Fejl: {e}")
                 
-                
 def get_roi_circle(image_shape, delta_xy, radius):
     """Generate circular roi given center position and radius.
 

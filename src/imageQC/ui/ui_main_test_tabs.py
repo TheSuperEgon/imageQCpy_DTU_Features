@@ -1978,9 +1978,9 @@ class ParamsTabXray(ParamsTabCommon):
         paramset.aapm_zoom_center_x = self.zoom_center_x
         paramset.aapm_zoom_center_y = self.zoom_center_y
     
-        # Kald `update_zoom` for at opdatere zoom-niveau og ROI-grid baseret på de nye center-koordinater
-        self.update_zoom()
-
+        # Kald update_zoom for at opdatere zoom-niveau og ROI-grid baseret på de nye center-koordinater
+        self.update_zoom()       
+    
     def update_zoom(self):
         """Opdater zoom-niveau og ROI-griddet baseret på zoom-sliderens værdi."""
         # Tjekker om en opdatering allerede er i gang
@@ -2060,12 +2060,9 @@ class ParamsTabXray(ParamsTabCommon):
                 # Udskriver billedstørrelse i mm.
                 print(f'[DEBUG on_image_loaded()] Image width i mm: {self.main.current_image_width_mm}')
                 print(f'[DEBUG on_image_loaded()] Image height i mm: {self.main.current_image_height_mm}')
-
-                # Tjek om dropdown-menuen har "Center" valgt som standard
-                if self.zoom_center_dropdown.currentText() == 'Center':
-                    # Sæt zoom-centeret til billedets midte
-                    self.zoom_center_x = width_pixels // 2
-                    self.zoom_center_y = height_pixels // 2
+                
+                # Kald `update_zoom_center()` for at indstille zoom-centeret baseret på dropdown-valget
+                self.update_zoom_center()
 
                 # Kald update_enabled for at opdatere GUI og beregne grid-dimensioner
                 self.update_enabled()

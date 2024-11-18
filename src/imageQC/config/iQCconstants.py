@@ -190,10 +190,10 @@ HEADERS = {
             'alt4': ['Avg Signal',            # Average signal over alle ROIs
                      'Avg Noise',             # Average Noise over alle ROIs
                      'Avg SNR',               # Average SNR over alle ROIs
-         	     'Local Non-uniformity',      # Lokal non-uniformitet
-         	     'Global Non-uniformity',     # Global non-uniformitet
-        	     'Min Signal',                # Minimum PixValue i en ROI
-        	     'Max Signal',                # Maximum PixValue i en ROI
+         	     'Local Non-uni',      # Lokal non-uniformitet
+         	     'Global Non-uni',     # Global non-uniformitet
+        	     'Avg Min ROI# Sign',                # Average Minimum PixValue i en ROI
+        	     'AVG Max ROI# Sign',                # Average Maximum PixValue i en ROI
        	 	     'ROI Count',                 # Antal ROIs
       		     'Avg Dev',                   # Avg Dev af PixValues på tværs af ROIs
         	     'SNR Std Dev']              # Standardafvigelse af SNR over alle ROIs

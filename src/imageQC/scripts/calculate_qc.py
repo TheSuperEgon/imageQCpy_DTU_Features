@@ -1180,6 +1180,7 @@ def calculate_2d(image2d, roi_array, image_info, modality,
                 stds.append(np.std(arr))
 
         flatfield = False
+        aapm = False
         if modality == 'CT':
             headers = copy.deepcopy(HEADERS[modality][test_code]['altAll'])
             headers_sup = copy.deepcopy(HEADERS_SUP[modality][test_code]['altAll'])
@@ -3789,18 +3790,31 @@ def calculate_aapm(rois, image2d):
         snrs = [avg / noise if noise != 0 else None for avg, noise in zip(avg_signals, std_devs)]
         avg_snr = np.mean([snr for snr in snrs if snr is not None])
 
+        # Beregn lokal non-uniformitet baseret på forskellen mellem naboer
         local_non_uniformity_values = []
-        for i in range(len(avg_signals) - 1):
-            avg1 = avg_signals[i]
-            avg2 = avg_signals[i + 1]
-            avg_sum = (avg1 + avg2) / 2
-            if avg_sum != 0:
-                diff = abs(avg1 - avg2) / avg_sum  # Normaliseret forskel
-                local_non_uniformity_values.append(diff)
-            else:
-                # Hvis gennemsnittet er 0, skal vi undgå at beregne diff og eventuelt tilføje 0
-                local_non_uniformity_values.append(0)
+        grid_size = int(np.sqrt(len(rois)))  # Antager et kvadratisk grid for simplificering
 
+        for i in range(len(avg_signals)):
+            row, col = divmod(i, grid_size)
+            neighbor_signals = []
+
+            # Hent nabosignaler (venstre, højre, over, under)
+            if row > 0:  # Over
+                neighbor_signals.append(avg_signals[(row - 1) * grid_size + col])
+            if row < grid_size - 1:  # Under
+                neighbor_signals.append(avg_signals[(row + 1) * grid_size + col])
+            if col > 0:  # Venstre
+                neighbor_signals.append(avg_signals[row * grid_size + (col - 1)])
+            if col < grid_size - 1:  # Højre
+                neighbor_signals.append(avg_signals[row * grid_size + (col + 1)])
+
+            # Beregn lokal non-uniformitet som forskellen til gennemsnittet af naboer
+            if neighbor_signals:
+                avg_neighbor_signal = np.mean(neighbor_signals)
+                diff = abs(avg_signals[i] - avg_neighbor_signal) / avg_signal_overall if avg_signal_overall != 0 else 0
+                local_non_uniformity_values.append(diff)
+
+        # Gennemsnitlig lokal non-uniformitet
         local_non_uniformity = np.mean(local_non_uniformity_values) if local_non_uniformity_values else 0
 
         # Global non-uniformitet som normaliseret forskel mellem maks og min af gennemsnitssignalet for ROIs
@@ -3817,8 +3831,8 @@ def calculate_aapm(rois, image2d):
             'Avg SNR': avg_snr,
             'Local Non-uniformity': local_non_uniformity,
             'Global Non-uniformity': global_non_uniformity,
-            'Min Signal': global_min_signal,
-            'Max Signal': global_max_signal,
+            'Avg Min # Signal': global_min_signal,
+            'Avg Max # Signal': global_max_signal,
             'ROI Count': len(rois),
             'Avg Dev': np.std(avg_signals),
             'SNR Std Dev': np.std([snr for snr in snrs if snr is not None]),
