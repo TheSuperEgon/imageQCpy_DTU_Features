@@ -137,11 +137,9 @@ def get_rois(image, image_number, input_main):
             if paramset.hom_tab_alt == 3:
                 flatfield = True
             elif paramset.hom_tab_alt == 4:
-                print("[Hom() i calculate_roi.py] AAPM method er valgt")
-                print(f"[Hom() i calculate_roi.py] Rows: {paramset.aapm_grid_rows}, Columns: {paramset.aapm_grid_cols}")
                 roi_array = calculate_aapm_rois(image_info, paramset)  # kalder på calculate_aapm_rois
                 
-                return roi_array  # Returnér AAPM ROI array
+                return roi_array  # returner et ROI array
     
         if flatfield:
             roi_array = get_roi_hom_flatfield(image_info, paramset)
@@ -668,36 +666,22 @@ def get_roi_rectangle(image_shape,
 
     return inside
 
-def calculate_aapm_rois(image_info, paramset, call_id=None):
+def calculate_aapm_rois(image_info, paramset):
     """Beregner og returnerer en liste over ROIs inden for det angivne extent og zoom-niveau."""
-    
-    # Generer et tilfældigt ID, hvis der ikke er angivet et call_id
-    if call_id is None:
-        call_id = random.randint(1000, 9999)
-
-    print(f"[DEBUG calculate_aapm_rois()] Call ID: {call_id}")
-    print(f"[DEBUG calculate_aapm_rois()] paramset.aapm_initialized={paramset.aapm_initialized}, paramset.aapm_zoom_level={paramset.aapm_zoom_level}")
-    
-    # Tidlig return hvis AAPM ikke er initialiseret korrekt eller zoom-level er under 4
-    if not paramset.aapm_initialized or paramset.aapm_zoom_level < 4:
-        print(f"[INFO calculate_aapm_rois()] Call ID: {call_id} - AAPM ikke initialiseret korrekt eller zoomniveau under 4. Afslutter.")
-        return []
     
     try:
         rows = paramset.aapm_grid_rows
         cols = paramset.aapm_grid_cols
         
-        # Hent zoomcenter-koordinater fra paramset
+        # Henter zoomcenter-koordinater fra paramset
         zoom_center_x = paramset.aapm_zoom_center_x
         zoom_center_y = paramset.aapm_zoom_center_y
         
-        print(f"[calculate_aapm_rois] Anvender zoom center: ({zoom_center_x}, {zoom_center_y}) for call ID {call_id}")
-        
-        # Brug pixel spacing fra paramset
+        # Bruger pixel spacing fra paramset
         pixel_spacing_x = paramset.pixel_spacing_x
         pixel_spacing_y = paramset.pixel_spacing_y
 
-        # Beregn zoomet billeddimensions ved bruge calculate_grid_dimensions()
+        # Beregner zoomet billeddimensions ved bruge calculate_grid_dimensions()
         _, _, _, _, zoomed_width, zoomed_height = calculate_grid_dimensions(
             image_info.shape[1] * pixel_spacing_x, image_info.shape[0] * pixel_spacing_y,
             paramset.aapm_roi_size, paramset.aapm_zoom_level, zoom_center_x, zoom_center_y)
@@ -731,30 +715,27 @@ def calculate_aapm_rois(image_info, paramset, call_id=None):
             start_x = int(zoom_center_x - (cols * roi_size_in_pix / 2))
             start_y = int(zoom_center_y - (rows * roi_size_in_pix / 2))
 
-        # Debug-prints for start- og slutkoordinater
         slut_x = start_x + cols * roi_size_in_pix
         slut_y = start_y + rows * roi_size_in_pix
-        print(f"[DEBUG calculate_aapm_rois] Start x: {start_x}, Start y: {start_y}")
-        print(f"[DEBUG calculate_aapm_rois] Slut x: {slut_x}, Slut y: {slut_y}")
         
         rois = []
         roi_count = 0  # Tæller for ROIs
         total_true = 0
         total_false = 0
         
-        # Generér grid af ROIs inden for zoomet dimensioner
+        # genererer grid af ROIs inden for zoomet dimensions
         for row in range(rows):
             for col in range(cols):
                 roi_x = start_x + col * roi_size_in_pix
                 roi_y = start_y + row * roi_size_in_pix
                 
-                # Tjekker om ROI er inden for zoomede grænser
+                # Tjekker om ROI er inden for zoomet limits
                 if roi_x + roi_size_in_pix <= slut_x and roi_y + roi_size_in_pix <= slut_y:
                     roi = get_roi_rectangle(image_info.shape, int(roi_size_in_pix), int(roi_size_in_pix), (roi_x, roi_y))
                     rois.append(roi)
                     roi_count += 1
                     
-                    # Beregn antal True/False værdier for ROI
+                    # Beregner antal True/False værdier for ROI
                     true_values = np.count_nonzero(roi)
                     false_values = roi.size - true_values
                     total_true += true_values

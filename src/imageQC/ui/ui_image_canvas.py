@@ -416,6 +416,7 @@ class ImageCanvas(GenericImageCanvas):
             color_no = i % len(colors)
             linestyle_no = i % len(linestyles)
             mask = np.where(this_roi[roi_no], 0, 1)
+            contour = None
             if filled:
                 if hatches is None:
                     contour = self.ax.contourf(
@@ -427,10 +428,15 @@ class ImageCanvas(GenericImageCanvas):
                         hatches=hatches[hatch_no])
                     contour.collections[0].set_edgecolor(colors[color_no])
             else:
-                contour = self.ax.contour(
-                    mask, levels=[0.9],
-                    colors=colors[color_no], alpha=0.5, linewidths=self.linewidth,
-                    linestyles=linestyles[linestyle_no])
+                try:
+                    contour = self.ax.contour(
+                        mask, levels=[0.9],
+                        colors=colors[color_no], alpha=0.5, linewidths=self.linewidth,
+                        linestyles=linestyles[linestyle_no])
+                except np.core._exceptions._ArrayMemoryError as err:
+                    print(f'Error while trying to display ROI {roi_no}:')
+                    print(str(err))
+                    pass
             if labels:
                 try:
                     label = labels[i]
@@ -450,7 +456,8 @@ class ImageCanvas(GenericImageCanvas):
                                      color=colors[color_no])
                 except (ValueError, IndexError):
                     pass
-            self.contours.append(contour)
+            if contour is not None:
+                self.contours.append(contour)
 
     def Bar(self):
         """Draw Bar ROIs."""

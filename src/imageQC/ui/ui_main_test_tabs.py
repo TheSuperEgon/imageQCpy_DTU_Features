@@ -257,103 +257,96 @@ class ParamsTabCommon(QTabWidget):
         make_odd : bool, optional
             Force integer to be odd number. Default is False
         """
+        if not self.flag_ignore_signals:
+            if content is None:
+                sender = self.sender()
+                if hasattr(sender, 'setChecked'):
+                    content = sender.isChecked()
+                elif hasattr(sender, 'setValue'):
+                    content = round(sender.value(), sender.decimals())
+                    if sender.decimals() == 0:
+                        content = int(content)
+                        if make_odd:
+                            if content % 2 == 0:
+                                prev_value = getattr(
+                                    self.main.current_paramset, attribute)
+                                if content > prev_value:  # increasing value
+                                    content += 1
+                                else:
+                                    content -= 1
+                                self.blockSignals(True)
+                                self.sender().setValue(content)
+                                self.blockSignals(False)
+                elif hasattr(sender, 'setText'):
+                    content = sender.text()
+                elif hasattr(sender, 'setCurrentIndex'):  # QComboBox
+                    content = sender.currentIndex()
+                    if attribute in ['sni_ref_image', 'num_digit_label']:
+                        content = sender.currentText()
+                else:
+                    content = None
 
-        if content is None:
-            sender = self.sender()
-            if hasattr(sender, 'isChecked'):
-                content = sender.isChecked()
-            elif hasattr(sender, 'value'):
-               # Håndter QSpinBox og QDoubleSpinBox
-                content = round(sender.value(), sender.decimals()) if isinstance(sender, QDoubleSpinBox) else int(sender.value())
-                if make_odd and content % 2 == 0:
-                    content += 1 if content > 0 else -1
-                    sender.setValue(content)
-            elif hasattr(sender, 'text'):
-                content = sender.text()
-            elif hasattr(sender, 'currentIndex'):
-                content = sender.currentIndex()
-
-       # Hvis content stadig er None, returner uden at gøre noget
-        if content is None:
-            return
-
-       # Sammenlign værdien og opdater kun, hvis den er forskellig fra aktuelle
-        current_value = getattr(self.main.current_paramset, attribute, None)
-
-       # Kopiér parametre før ændring for at kunne sammenligne senere
-        previous_params = self.main.current_paramset.__dict__.copy()
-
-       # Tilføj ekstra kontrol for kun at opdatere, hvis værdien virkelig har ændret sig.
-        if current_value == content:
-            return  # Ingen ændring, så vi stopper her
-
-       # Hvis værdien er ændret, opdater parametret
-        setattr(self.main.current_paramset, attribute, content)
-
-       # Hvis hom_tab_alt eller aapm_grid_auto opdateres, opdater GUI
-        if attribute == 'hom_tab_alt' or attribute == 'aapm_grid_auto':
-            self.update_enabled() 
-
-       # Tøm resultater, hvis det nødvendigt
-        if clear_results:
-            self.clear_results_current_test()
-
-       # Marker som redigeret, men kun hvis der sket ændring
-        if not edit_ignore:
-            self.flag_edit(True)
-
-       # Opdater ROI, hvis nødvendigt
-        if update_roi:
-            self.main.update_roi()
-
-       # Opdater plot og resultater, hvis nødvendigt
-        if update_plot or update_results_table:
-            self.main.refresh_results_display()
-
-       # Håndter alternative indstillinger for output, hvis de ændres
-        if attribute == 'roi_use_table':
-            new_rect_pos = content == 2
-            if new_rect_pos != self.roi_table_widget.use_rectangle:
-                self.roi_table_widget.use_rectangle = new_rect_pos
-                self.roi_table_widget.update_on_rectangle_change()
-            if content == 0:
-                self.roi_table_widget.setEnabled(False)
-            else:
-                self.roi_table_widget.setEnabled(True)
-                self.set_offset('roi_offset_xy', reset=True)
-
-       # Opdater alternative indstillinger, hvis der er ændringer
-        if attribute in ['sni_type', 'sni_channels']:
-            alt = 0 if self.main.current_paramset.sni_type == 0 else 2
-            if self.main.current_paramset.sni_channels:
-                alt = alt + 1
-            self.main.current_paramset.sni_alt = alt
-            if attribute == 'sni_channels':
+            if content is not None:
+                if clear_results:
+                    self.clear_results_current_test()
+                setattr(self.main.current_paramset, attribute, content)
                 self.update_enabled()
+                if edit_ignore is False:
+                    self.flag_edit(True)
+                if update_roi:
+                    self.main.update_roi()
+                    if attribute.startswith('sni_'):
+                        self.update_sni_roi_names()
+                    elif attribute == 'mtf_type' and self.main.current_modality == 'NM':
+                        if content == 2:
+                            self.mtf_auto_center.setChecked(True)
+                if ((update_plot or update_results_table)
+                        and clear_results is False):
+                    if attribute == 'mtf_gaussian':
+                        self.update_values_mtf()
+                    elif attribute == 'rec_type':
+                        self.update_values_rec()
+                    self.main.refresh_results_display()
+                if attribute == 'roi_use_table':
+                    new_rect_pos = True if content == 2 else False
+                    if new_rect_pos != self.roi_table_widget.use_rectangle:
+                        self.roi_table_widget.use_rectangle = new_rect_pos
+                        self.roi_table_widget.update_on_rectangle_change()
+                    if content == 0:
+                        self.roi_table_widget.setEnabled(False)
+                    else:
+                        self.roi_table_widget.setEnabled(True)
+                        self.set_offset('roi_offset_xy', reset=True)
+                elif attribute in ['sni_type', 'sni_channels']:
+                    alt = 0 if self.main.current_paramset.sni_type == 0 else 2
+                    if self.main.current_paramset.sni_channels:
+                        alt = alt + 1
+                    self.main.current_paramset.sni_alt = alt
+                    if attribute == 'sni_channels':
+                        self.update_enabled()
+                if all([self.main.current_modality == 'Xray',
+                        self.main.current_test == 'NPS']):
+                    self.update_NPS_independent_pixels()
 
-            # changes that might affect output settings?
-            # - alternative or headers changed
-            log = []
-            if attribute in [
-                    'sli_type', 'mtf_type', 'rec_type', 'snr_type',
-                    'roi_use_table', 'hom_tab_alt', 'sni_alt']:
-                _, log = cff.verify_output_alternative(
-                    self.main.current_paramset, testcode=self.main.current_test)
-
-            if previous_params == self.main.current_paramset.__dict__:
-                return
-
-            if log:
-                msg = ('Output settings are defined for this parameterset. '
-                       'Changing this parameter will change the headers of '
-                       'the Result table. Consider updating the output settings.')
-                dlg = messageboxes.MessageBoxWithDetails(
-                    self, title='Warnings',
-                    msg=msg,
-                    info='See details',
-                    icon=QMessageBox.Warning,
-                    details=log)
-                dlg.exec()
+                # changes that might affect output settings?
+                # - alternative or headers changed
+                log = []
+                if attribute in [
+                        'sli_type', 'mtf_type', 'rec_type', 'snr_type',
+                        'roi_use_table', 'hom_tab_alt', 'sni_alt']:
+                    _, log = cff.verify_output_alternative(
+                        self.main.current_paramset, testcode=self.main.current_test)
+                if log:
+                    msg = ('Output settings are defined for this parameterset. '
+                           'Changing this parameter will change the headers of '
+                           'the Result table. Consider updating the output settings.')
+                    dlg = messageboxes.MessageBoxWithDetails(
+                        self, title='Warnings',
+                        msg=msg,
+                        info='See details',
+                        icon=QMessageBox.Warning,
+                        details=log)
+                    dlg.exec()
 
     def clear_results_current_test(self):
         """Clear results of current test."""
@@ -1552,8 +1545,8 @@ class ParamsTabXray(ParamsTabCommon):
     def __init__(self, parent):
         super().__init__(parent)
         self.processing_flag = False  # tilføjer processing-flag 
-        self.zoom_initialized = False  # nyt flag for at sikre initialisering af zoom kun sker én gang
-        self.aapm_initialized = False  # nyt flag for at sikre initialisering af AAPM-rois kun sker én gang
+        self.zoom_initialized = False  # flag for at sikre initialisering af zoom kun sker én gang
+        self.aapm_initialized = False  # flag for at sikre initialisering af AAPM-rois kun sker én gang
 
         # Initialiser zoom-center variabler
         self.zoom_center_x = 0
@@ -1581,31 +1574,31 @@ class ParamsTabXray(ParamsTabCommon):
         if self.processing_flag:
             print("[INFO update_enabled()] Processing already in progress, skipping this call.")
             return
-
+    
         self.processing_flag = True
         print("[update_enabled()] update_enabled() kaldt.")
         
         super().update_enabled()
-
+    
         # Sørger for at der arbejdes med Xray 
         if self.main.current_modality != 'Xray':
             self.processing_flag = False  # Nulstil flaget, hvis det ikke er Xray
             return  # Gå ud af funktion hvis modalitet ikke er Xray
-
+    
         paramset = self.main.current_paramset
-
+    
         # Skjul eller vis elementer baseret på metoden
         if paramset.hom_tab_alt in [0, 1, 2]:  # Central + quadrants ROI metoder
             self.stack_hom.setCurrentWidget(self.central_quadrants_widget)
             self.hom_roi_size_label.setText('ROI radius (mm)')
             # Skjul zoom-elementer for Central + quadrants ROI metoder
             self.toggle_visibility([], [self.zoom_slider, self.zoom_center_dropdown])
-
+    
         elif paramset.hom_tab_alt == 3:  # Flat field test from Mammo
             self.stack_hom.setCurrentWidget(self.flat_widget_mammo)
             # Skjul zoom-elementer for Mammo-metoden
             self.toggle_visibility([], [self.zoom_slider, self.zoom_center_dropdown])
-
+    
         elif paramset.hom_tab_alt == 4:  # Flat field analysis AAPM
             self.stack_hom.setCurrentWidget(self.flat_widget_aapm)
             
@@ -1619,17 +1612,17 @@ class ParamsTabXray(ParamsTabCommon):
                 # Tving opdatering af zoom 
                 self.processing_flag = False  # Nulstil for at tillade kald af update_zoom
                 self.update_zoom()
-
+    
             # Vis zoom-elementer kun for AAPM-metoden
             self.toggle_visibility([self.zoom_slider, self.zoom_center_dropdown], [])
-
+    
             # Hvis auto-grid er valgt beregnes antal rækker og kolonner
             if paramset.aapm_grid_auto and hasattr(self.main, 'current_image_width_mm'):
                 image_width_mm = self.main.current_image_width_mm  # bredde i mm
                 image_height_mm = self.main.current_image_height_mm  # højde i mm
                 
                 print(f"[DEBUG update_enabled()] Billedbredde: {image_width_mm}, Billedhøjde: {image_height_mm}")
-
+    
                 # Kalder funktionen til at beregne grid-dimensionerne
                 rows, cols, last_row_height, last_col_width, zoomed_width, zoomed_height = calculate_grid_dimensions(
                     image_width_mm, image_height_mm, paramset.aapm_roi_size,
@@ -1637,12 +1630,12 @@ class ParamsTabXray(ParamsTabCommon):
                     zoom_center_x=self.zoom_center_x,     # Zoom-center X-koordinat
                     zoom_center_y=self.zoom_center_y      # Zoom-center Y-koordinat
                 )
-
+    
                 # Gem de beregnede rækker og kolonner i paramset
                 print(f"[DEBUG update_enabled()] Beregnet rækker: {rows}, Beregnet kolonner: {cols}")
                 paramset.aapm_grid_rows, paramset.aapm_grid_cols = rows, cols
                 print(f"[DEBUG update_enabled()] Efter opdatering: paramset.aapm_grid_rows={paramset.aapm_grid_rows}, paramset.aapm_grid_cols={paramset.aapm_grid_cols}")
-
+    
                 # Opdater de nye felter med beregnede dimensioner
                 self.aapm_auto_rows_value.setText(str(rows))
                 self.aapm_auto_cols_value.setText(str(cols))
@@ -1658,19 +1651,17 @@ class ParamsTabXray(ParamsTabCommon):
                 # Hvis der ikke er billede indlæst, eller auto-grid er slået fra
                 self.aapm_auto_rows_value.setText('N/A')
                 self.aapm_auto_cols_value.setText('N/A')
-
+    
             # Opdater GUI med beregnede eller manuelle værdier
             self.aapm_grid_rows.setValue(paramset.aapm_grid_rows)
             self.aapm_grid_cols.setValue(paramset.aapm_grid_cols)
-
+    
             # Aktivér eller deaktiver manuel justering afhængig af auto-grid
             self.aapm_grid_rows.setEnabled(not paramset.aapm_grid_auto)
             self.aapm_grid_cols.setEnabled(not paramset.aapm_grid_auto)
-
+    
             # Opdater AAPM-specifikke parametre
             self.aapm_roi_size.setValue(paramset.aapm_roi_size)
-            self.aapm_roi_overlap.setChecked(paramset.aapm_roi_overlap)
-            self.aapm_variance.setChecked(paramset.aapm_variance)
             
         # Nulstiller processing-flaget efter opdateringen er afsluttet
         self.processing_flag = False
@@ -1687,26 +1678,26 @@ class ParamsTabXray(ParamsTabCommon):
         """GUI of tab Homogeneity."""
         self.tab_hom = ParamsWidget(self, run_txt='Calculate homogeneity')
 
-        # Opret ROI label og inputfelt
-        self.hom_roi_size_label = QLabel('ROI radius (mm)')  # Opret label for ROI størrelse
+        # opretter ROI label og inputfelt
+        self.hom_roi_size_label = QLabel('ROI radius (mm)')  # label for ROI size
         self.hom_roi_size = QDoubleSpinBox(
             decimals=1, minimum=0.1, maximum=300, singleStep=0.1)
         self.hom_roi_size.valueChanged.connect(
             lambda: self.param_changed_from_gui(attribute='hom_roi_size'))
 
-        # Standardværdi for ROI radius til 10.0
+        # standardværdi for ROI size til 10.0
         self.hom_roi_size.setValue(10.0)
 
-        # Tilføj label og inputfelt til layout (venstre side)
+        # tilføjer label og inputfelt til layout (venstre side)
         self.tab_hom.hlo_top.addWidget(self.hom_roi_size_label)
         self.tab_hom.hlo_top.addWidget(self.hom_roi_size)
 
-        # Opret dropdown-menu for metoder og placer den øverst i højre hjørne
+        # opretter dropdown-menu for metoder øverst til højre 
         hlo_dropdown = QHBoxLayout()
-        hlo_dropdown.addStretch()  # Tilføj stretch for at skubbe elementer til højre
+        hlo_dropdown.addStretch()  # tilføjer stretch for at skubbe elementer til højre
         hlo_dropdown.addWidget(QLabel('Method/output: '))
 
-        # Initialisering af hom_tab_alt (dropdown til metoder)
+        # initialisering af hom_tab_alt (dropdown til metoder)
         self.hom_tab_alt = QComboBox()
         self.hom_tab_alt.addItems([
             'Central + quadrants ROI, avg and stdev for each ROI',
@@ -1718,28 +1709,28 @@ class ParamsTabXray(ParamsTabCommon):
         self.hom_tab_alt.currentIndexChanged.connect(
             lambda: self.param_changed_from_gui(attribute='hom_tab_alt'))
 
-        # Juster bredden af Method/output dropdown
+        # justere bredden af Method/output dropdown
         self.hom_tab_alt.setFixedWidth(250)
 
-        # Tilføj dropdown layout til hlo_top (højre side)
+        # tilføjer dropdown layout til hlo_top (højre side)
         hlo_dropdown.addWidget(self.hom_tab_alt)
         self.tab_hom.hlo_top.addLayout(hlo_dropdown)
 
-        # Opret widgets for hver metode
-        self.create_central_quadrants_widget()  # For Central + quadrants ROI
-        self.create_flat_widget_mammo()  # For Flat field test from Mammo
-        self.create_flat_widget_aapm()   # For Flat field analysis AAPM
+        # opretter widgets for hver metode
+        self.create_central_quadrants_widget()  # for Central + quadrants ROI
+        self.create_flat_widget_mammo()  # for Flat field test from Mammo
+        self.create_flat_widget_aapm()   # for Flat field analysis AAPM
 
-        # Opret stacked widget til at skifte mellem metoder
+        # opretter stacked widget til at skifte mellem metoder
         self.stack_hom = QStackedWidget()
         self.stack_hom.addWidget(self.central_quadrants_widget)
         self.stack_hom.addWidget(self.flat_widget_mammo)
         self.stack_hom.addWidget(self.flat_widget_aapm)
 
-        # Tilføj stacked widget til layout
+        # tilføjer stacked widget til layout
         self.tab_hom.hlo.addWidget(self.stack_hom)
 
-        # Opdater initiale GUI-indstillinger baseret på valg i dropdown-menuen
+        # opdatere GUI-indstillinger baseret på valg i dropdown-menuen
         self.update_enabled()
 
     def create_central_quadrants_widget(self):
@@ -1894,16 +1885,10 @@ class ParamsTabXray(ParamsTabCommon):
         self.aapm_roi_size = QDoubleSpinBox(decimals=1, minimum=1.0, maximum=100.0, singleStep=0.1)
         flo_aapm.addRow(QLabel('AAPM ROI size (mm)'), self.aapm_roi_size)
 
-        self.aapm_roi_overlap = QCheckBox()
-        flo_aapm.addRow(QLabel('Allow ROI overlap'), self.aapm_roi_overlap)
-
         self.aapm_grid_auto = QCheckBox()
         self.aapm_grid_auto.setChecked(True)
         self.aapm_grid_auto.toggled.connect(lambda: self.param_changed_from_gui(attribute='aapm_grid_auto'))
         flo_aapm.addRow(QLabel('Auto-generate grid'), self.aapm_grid_auto)
-
-        self.aapm_variance = QCheckBox()
-        flo_aapm.addRow(QLabel('Calculate variance within each ROI'), self.aapm_variance)
 
         # Tilføj venstre side layout til hovedlayoutet
         hlo_flat_widget_aapm.addLayout(flo_aapm)
@@ -1993,20 +1978,11 @@ class ParamsTabXray(ParamsTabCommon):
         self.main.current_paramset.aapm_zoom_level = zoom_level  # Opdater aapm_zoom_level
         print(f"[DEBUG update_zoom()] Zoom-niveau opdateret til: {zoom_level}")
         
-        if self.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
-            # Hvis zoom-niveauet er under 4, fjern ROI-griddet
-            if zoom_level < 4:
-                print("[INFO update_zoom()] Zoom-niveau er for lavt til auto-generering af grid.")
-                self.aapm_auto_rows_value.setText('N/A') 
-                self.aapm_auto_cols_value.setText('N/A')  
-                
-                # Ryd visningen af ROI-griddet ved at kalde `clear_roi_display()`
-                self.main.clear_roi_display()
-                
-                self.processing_flag = False
-                return  # Afslut funktionen, da grid ikke genereres ved niveau under 4
-            
-            # Hvis zoom-niveauet er 4 eller højere, beregn og vis ROI-griddet
+        if self.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM   
+            self.processing_flag = False
+            return
+             
+            # Beregn og vis ROI-griddet
             if hasattr(self.main, 'current_image') and self.main.current_image is not None:
                 # Beregn grid-dimensioner
                 image_width_mm = self.main.current_image_width_mm
@@ -2021,57 +1997,56 @@ class ParamsTabXray(ParamsTabCommon):
                     zoom_center_y=self.zoom_center_y
                 )
         
-                # Opdater GUI med de beregnede dimensioner
+                # opdater GUI med de beregnede dimensioner
                 self.aapm_auto_rows_value.setText(str(rows))
                 self.aapm_auto_cols_value.setText(str(cols))
         
-                # Opdater paramset med de nye grid-dimensioner
+                # opdater paramset med de nye grid-dimensions
                 self.main.current_paramset.aapm_grid_rows = rows
                 self.main.current_paramset.aapm_grid_cols = cols
         
-                # Generer ROI’er og tegn griddet
+                # generer ROIs og tegn griddet
                 self.main.current_roi = calculate_aapm_rois(self.main.current_image, self.main.current_paramset)
-                self.main.wid_image_display.canvas.roi_draw()  # Brug Ellens funktion til at tegne ROIs
+                self.main.wid_image_display.canvas.roi_draw()  # bruger roi_draw til tegne ROIs
                 print("[INFO update_zoom()] ROI-grid opdateret og tegnet ved zoom-niveau 4 eller højere.")
             
-        # Rydder processing-flaget efter opdateringen
+        # rydder processing-flaget efter opdateringen
         self.processing_flag = False
 
     def on_image_loaded(self, image):
         """Funktion der kaldes, når et billede indlæses."""
 
-        # Bruger 'shape' til at få dimensionerne i pixels
+        # bruger 'shape' til at få dimensionerne i pixels
         if hasattr(image, 'shape'):
             height_pixels, width_pixels = image.shape[:2]  # Højde og bredde i pixels
 
-            # Brug 'pix' (pixel_spacing) til at finde pixel-størrelse og beregne mm.
+            # bruger 'pix' (pixel_spacing) til at finde pixel-size og beregne mm.
             if hasattr(image, 'pix') and len(image.pix) >= 2:
-                pixel_spacing_x, pixel_spacing_y = image.pix[:2]  # Pixelstørrelse i mm
+                pixel_spacing_x, pixel_spacing_y = image.pix[:2]  # pixel-size i mm
                 print(f'[DEBUG on_image_loaded()] Pixel spacing: {pixel_spacing_x} mm, {pixel_spacing_y} mm')
                 
-                # Gemmer pixel_spacing i paramset for at sikre adgang i fremtidige beregninger
+                # gemmer pixel_spacing i paramset for at sikre adgang i fremtidige beregninger
                 self.main.current_paramset.pixel_spacing_x = pixel_spacing_x
                 self.main.current_paramset.pixel_spacing_y = pixel_spacing_y
 
-                # Beregn billedstørrelse i mm.
+                # beregner billedstørrelse i mm.
                 self.main.current_image_width_mm = width_pixels * pixel_spacing_x
                 self.main.current_image_height_mm = height_pixels * pixel_spacing_y
 
-                # Udskriver billedstørrelse i mm.
                 print(f'[DEBUG on_image_loaded()] Image width i mm: {self.main.current_image_width_mm}')
                 print(f'[DEBUG on_image_loaded()] Image height i mm: {self.main.current_image_height_mm}')
                 
-                # Kald `update_zoom_center()` for at indstille zoom-centeret baseret på dropdown-valget
+                # Kalder update_zoom_center() for at indstille zoom-centeret baseret på dropdown-valg
                 self.update_zoom_center()
 
                 # Kald update_enabled for at opdatere GUI og beregne grid-dimensioner
                 self.update_enabled()
 
             else:
-                # Hvis der ikke er pixelspacing data
-                print("[DEBUG on_image_loaded()] Pixel spacing (pix) not found, can't calculate size in mm.")
+                # Hvis der ikke er pixel spacing data
+                print("[DEBUG on_image_loaded()] Pixel spacing (pix) ikke fundet, kan ikke beregne size i mm.")
         else:
-            print("[DEBUG on_image_loaded()] Image does not have shape attribute")
+            print("[DEBUG on_image_loaded()] Image har ikke shape attribute")
 
     def create_tab_noi(self):
         """GUI of tab Noise."""

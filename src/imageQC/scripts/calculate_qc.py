@@ -1253,52 +1253,40 @@ def calculate_2d(image2d, roi_array, image_info, modality,
                         headers_sup=headers_sup, values_sup=values_sup,
                         details_dict=details)
 
-        # Kald calculate_aapm med rois og håndter resultater
+        # kalder calculate_aapm med rois og håndter resultater
         if aapm:
             if image2d is not None:
-                # Generer ROIs og beregn AAPM-statistikker
-                rois = calculate_aapm_rois(image_info, paramset)
-                aapm_details = calculate_aapm(rois, image2d)
+                # generer ROIs og beregner AAPM-statistikker
+                aapm_details = calculate_aapm(roi_array, image2d)
         
                 if aapm_details:
-                    # Beregn værdier baseret på aapm_details output
+                    # beregner værdier baseret på aapm_details output
                     values = [
                         aapm_details['Avg Signal'],
                         aapm_details['Avg Noise'],
                         aapm_details['Avg SNR'],
                         aapm_details['Local Non-uniformity'],
                         aapm_details['Global Non-uniformity'],
-                        aapm_details['Min Signal'],
-                        aapm_details['Max Signal'],
-                        aapm_details['ROI Count'],
+                        aapm_details['Avg Min # Signal'],
+                        aapm_details['Avg Max # Signal'],
                         aapm_details['Avg Dev'],
                         aapm_details['SNR Std Dev']
                     ]
         
-                    # Hvis vi har brug for masked image eller yderligere værdier:
-                    masked_image = np.ma.masked_array(image2d, mask=None)  # Tilføj mask hvis nødvendigt
-        
-                    values_sup = [
-                        np.min(masked_image), np.max(masked_image),
-                        np.min(values), np.max(values),
-                        np.std(values), aapm_details['ROI Count']
-                    ]
-        
-                    # Konstruer et Results objekt
+                    # laver et Results objekt
                     res = Results(
                         headers=headers, values=values,
                         headers_sup=headers_sup, values_sup=values_sup,
                         details_dict=aapm_details
                     )
         
-        # Hvis der ikke er blevet tildelt res, tildel en default res
+        # Hvis der ikke er blevet tildelt res (result), tildel en default res
         if res is None:
             res = Results(headers=headers, values=values,
                           headers_sup=headers_sup, values_sup=values_sup,
                           alternative=alt)
         
         return res
-    
 
     def HUw():
         headers = copy.deepcopy(HEADERS[modality][test_code]['alt0'])
@@ -3761,19 +3749,19 @@ def calculate_flatfield_mammo(image2d, mask_max, mask_outer, image_info, paramse
     return details
 
 
-def calculate_aapm(rois, image2d):
+def calculate_aapm(roi_array, image2d):
     """Beregner AAPM-relaterede værdier, herunder non-uniformitet."""
     try:
-        # Beregning af gennemsnitssignal og støj (standardafvigelse) for hver ROI
+        # beregning af gennemsnitssignal og støj (standardafvigelse) for hver ROI
         avg_signals = []
-        std_devs = []  # Standardafvigelser for hver ROI, som afspejler støj/variation inden for hver ROI
+        std_devs = []  # Standardafvigelser for hver ROI. Afspejler støj/variation inden for hver ROI
         
-        for i, roi in enumerate(rois):
-            # Opret en maske for den nuværende ROI
+        for i, roi in enumerate(roi_array):
+            # opretter maske for den nuværende ROI
             roi_mask = np.zeros(image2d.shape, dtype=bool)
-            roi_mask[roi] = True  # Antager at roi indeholder koordinater til ROI'en
+            roi_mask[roi] = True  # antager at roi indeholder koordinater til ROI'en
 
-            # Beregn gennemsnit og standardafvigelse for den nuværende ROI
+            # beregner gennemsnit og standardafvigelse for den nuværende ROI
             avg_signal = np.mean(image2d[roi_mask])
             std_dev = np.std(image2d[roi_mask])
 
@@ -3782,49 +3770,49 @@ def calculate_aapm(rois, image2d):
 
         print("Avg Signals for each ROI:", avg_signals)
 
-        # Beregn overordnet gennemsnitssignal og gennemsnitlig støj på tværs af alle ROIs
+        # beregner overordnet gennemsnitssignal- og støj på tværs af alle ROIs
         avg_signal_overall = np.mean(avg_signals)
         avg_noise = np.mean(std_devs)
 
-        # Beregn SNR for hver ROI
+        # beregner SNR for hver ROI
         snrs = [avg / noise if noise != 0 else None for avg, noise in zip(avg_signals, std_devs)]
         avg_snr = np.mean([snr for snr in snrs if snr is not None])
 
-        # Beregn lokal non-uniformitet baseret på forskellen mellem naboer
+        # beregner lokal non-uniformity baseret på forskellen mellem naboer
         local_non_uniformity_values = []
-        grid_size = int(np.sqrt(len(rois)))  # Antager et kvadratisk grid for simplificering
+        grid_size = int(np.sqrt(len(roi_array)))  # antager kvadratisk grid for simplificering
 
         for i in range(len(avg_signals)):
             row, col = divmod(i, grid_size)
             neighbor_signals = []
 
-            # Hent nabosignaler (venstre, højre, over, under)
-            if row > 0:  # Over
+            # henter nabosignaler (venstre, højre, over, under)
+            if row > 0:  # over
                 neighbor_signals.append(avg_signals[(row - 1) * grid_size + col])
-            if row < grid_size - 1:  # Under
+            if row < grid_size - 1:  # under
                 neighbor_signals.append(avg_signals[(row + 1) * grid_size + col])
-            if col > 0:  # Venstre
+            if col > 0:  # venstre
                 neighbor_signals.append(avg_signals[row * grid_size + (col - 1)])
-            if col < grid_size - 1:  # Højre
+            if col < grid_size - 1:  # højre
                 neighbor_signals.append(avg_signals[row * grid_size + (col + 1)])
 
-            # Beregn lokal non-uniformitet som forskellen til gennemsnittet af naboer
+            # beregner lokal non-uniformity som forskellen til gennemsnittet af naboer
             if neighbor_signals:
                 avg_neighbor_signal = np.mean(neighbor_signals)
                 diff = abs(avg_signals[i] - avg_neighbor_signal) / avg_signal_overall if avg_signal_overall != 0 else 0
                 local_non_uniformity_values.append(diff)
 
-        # Gennemsnitlig lokal non-uniformitet
+        # gennemsnitlig lokal non-uniformity
         local_non_uniformity = np.mean(local_non_uniformity_values) if local_non_uniformity_values else 0
 
-        # Global non-uniformitet som normaliseret forskel mellem maks og min af gennemsnitssignalet for ROIs
+        # Global non-uniformity som normaliseret forskel mellem maks og min af gennemsnitssignalet for ROIs
         global_min_signal = np.min(avg_signals)
         global_max_signal = np.max(avg_signals)
         global_non_uniformity = (global_max_signal - global_min_signal) / avg_signal_overall if avg_signal_overall != 0 else 0
         print(f"Global Max Signal: {global_max_signal}, Global Min Signal: {global_min_signal}")
 
 
-        # Opsummering af beregnede værdier
+        # opsummering af beregnede værdier
         aapm_details = {
             'Avg Signal': avg_signal_overall,
             'Avg Noise': avg_noise,
@@ -3833,7 +3821,6 @@ def calculate_aapm(rois, image2d):
             'Global Non-uniformity': global_non_uniformity,
             'Avg Min # Signal': global_min_signal,
             'Avg Max # Signal': global_max_signal,
-            'ROI Count': len(rois),
             'Avg Dev': np.std(avg_signals),
             'SNR Std Dev': np.std([snr for snr in snrs if snr is not None]),
         }
@@ -3843,7 +3830,6 @@ def calculate_aapm(rois, image2d):
     except Exception as e:
         print(f"[ERROR calculate_aapm] Fejl: {e}")
         return None
-
 
 def get_corrections_point_source(
         image2d, img_info, roi_array,

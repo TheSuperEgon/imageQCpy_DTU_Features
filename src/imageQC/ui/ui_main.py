@@ -342,7 +342,7 @@ class MainWindow(QMainWindow):
             if self.wid_window_level.tb_wl.chk_wl_update.isChecked() is False:
                 self.wid_window_level.tb_wl.set_window_level('dcm', set_tools=True)
 
-        # Kald on_image_loaded for at opdatere grid-dimensioner
+        # Kalder on_image_loaded for at opdatere grid-dimensioner
         self.tab_xray.on_image_loaded(self.imgs[0])
 
         # Kontrollér om billeddata er tilgængelig
@@ -350,7 +350,7 @@ class MainWindow(QMainWindow):
             self.current_image = self.imgs[0].image
             self.display_image(self.current_image)  # Vis billedet
         else:
-            # Hent billeddata fra DICOM, hvis billeddata ikke er direkte tilgængelig
+            # Henter billeddata fra DICOM, hvis billeddata ikke er direkte tilgængelig
             dicom_file = self.imgs[0].filepath
             dicom_data = pydicom.dcmread(dicom_file)
 
@@ -376,14 +376,11 @@ class MainWindow(QMainWindow):
             print("[ERROR display_image()] Intet billede indlæst.")
             return
     
-        # Sørg for, at canvas er klar til at vise billedet
+        # Sørger for, at canvas er klar til at vise billedet
         self.wid_image_display.canvas.ax.clear()
-    
-        # Hvis billedet er gråtone, vis det som sådan
+
         if len(image.shape) == 2:
             self.wid_image_display.canvas.ax.imshow(image, cmap='gray', aspect='equal')
-        else:  # Farvebillede
-            self.wid_image_display.canvas.ax.imshow(image, aspect='equal')
     
         # Tilføjer det røde kryds for at dele billed i fire kvadranter
         img_height, img_width = image.shape[:2]
@@ -401,21 +398,15 @@ class MainWindow(QMainWindow):
     def update_image_view(self, zoom_level, zoom_center_x, zoom_center_y):
         """Opdater ROI-griddet baseret på zoom-niveau og center uden at ændre billedevisningen."""
     
-        # Sørg for, at funktionen kun køres, hvis AAPM-metoden er valgt
+        # Sørger for at funktion kun køres hvis AAPM er valgt
         if self.tab_xray.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM
-            # Check om zoom-niveauet er 4 eller højere for at generere ROI-grid
-            if zoom_level < 4:
-                print("[INFO update_image_view()] Zoom-niveau er for lavt til auto-generering af grid.")
-                self.aapm_auto_rows_value.setText('N/A')
-                self.aapm_auto_cols_value.setText('N/A')
-                return  # Afslut funktionen, da vi ikke genererer ROI-grid ved zoom-niveauer under 4
     
-            # Beregn kun ROI-grid uden at ændre selve billedvisningen
+            # Beregner kun ROI-grid uden at ændre billedvisningen
             image_width_mm = self.main.current_image_width_mm
             image_height_mm = self.main.current_image_height_mm
             roi_size_mm = self.main.current_paramset.aapm_roi_size
     
-            # Kald calculate_grid_dimensions for at beregne antal rækker og kolonner i griddet
+            # Kalder calculate_grid_dimensions for at beregne rækker/kolonner i grid
             rows, cols, _, _, _, _ = calculate_grid_dimensions(
                 image_width_mm, image_height_mm, roi_size_mm,
                 zoom_level=zoom_level,
@@ -423,15 +414,15 @@ class MainWindow(QMainWindow):
                 zoom_center_y=zoom_center_y
             )
     
-            # Opdater GUI-elementerne med de beregnede dimensioner
+            # Opdatere GUI-elementerne med beregnede dimensioner
             self.aapm_auto_rows_value.setText(str(rows))
             self.aapm_auto_cols_value.setText(str(cols))
     
-            # Opdater parametrene i paramset og beregn ROIs
+            # Opdatere parametrene i paramset og beregner ROIs
             self.main.current_paramset.aapm_grid_rows = rows
             self.main.current_paramset.aapm_grid_cols = cols
     
-            # Opdater ROI’erne uden at ændre visningen af billedet
+            # Opdatere ROIs
             self.main.update_roi()
         else:
             print("[Info update_image_view()] zoom-funktionalitet kun tilgængelig for AAPM.")
