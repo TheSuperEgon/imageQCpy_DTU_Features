@@ -1608,9 +1608,6 @@ class ParamsTabXray(ParamsTabCommon):
                 paramset.aapm_zoom_level = 4  # Eksplicit opdatering af aapm_zoom_level
                 self.zoom_initialized = True  # Markerer at initialiseringen er sket
                 print("[INFO update_enabled()] Zoom-niveau sat til 4 ved initialisering for AAPM.")
-                
-                # Tving opdatering af zoom 
-                self.processing_flag = False  # Nulstil for at tillade kald af update_zoom
                 self.update_zoom()
     
             # Vis zoom-elementer kun for AAPM-metoden
@@ -1924,8 +1921,8 @@ class ParamsTabXray(ParamsTabCommon):
             return  # Stop funktionen, hvis der ikke er noget billede at zoome på
     
         # Få billedets dimensioner og pixel spacing
-        width_pixels = self.main.current_image.shape[1]
-        height_pixels = self.main.current_image.shape[0]
+        width_pixels = self.main.current_image.shape[1] # rækker/pixels vertikalt
+        height_pixels = self.main.current_image.shape[0] # rækker/pixels horisontalt
         paramset = self.main.current_paramset
     
         # Beregn ROI-størrelse i pixels
@@ -1968,21 +1965,18 @@ class ParamsTabXray(ParamsTabCommon):
     
     def update_zoom(self):
         """Opdater zoom-niveau og ROI-griddet baseret på zoom-sliderens værdi."""
-        # Tjekker om en opdatering allerede er i gang
+        # tjekker om en opdatering allerede er i gang
         if self.processing_flag:
-            print("[INFO update_zoom()] Processing already in progress, skipping this call.")
+            print("[INFO update_zoom()] Processing allerede i proces, skipper dette kald.")
             return
         
-        self.processing_flag = True  # Sæt processing flag
+        self.processing_flag = True  # sætter processing flag
         zoom_level = self.zoom_slider.value()
         self.main.current_paramset.aapm_zoom_level = zoom_level  # Opdater aapm_zoom_level
         print(f"[DEBUG update_zoom()] Zoom-niveau opdateret til: {zoom_level}")
         
         if self.hom_tab_alt.currentIndex() == 4:  # Flat field analysis AAPM   
-            self.processing_flag = False
-            return
-             
-            # Beregn og vis ROI-griddet
+            # beregner og vis ROI-griddet
             if hasattr(self.main, 'current_image') and self.main.current_image is not None:
                 # Beregn grid-dimensioner
                 image_width_mm = self.main.current_image_width_mm
