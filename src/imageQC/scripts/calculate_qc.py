@@ -1269,8 +1269,10 @@ def calculate_2d(image2d, roi_array, image_info, modality,
                         aapm_details['Global Non-uniformity'],
                         aapm_details['Avg Min # Signal'],
                         aapm_details['Avg Max # Signal'],
-                        aapm_details['Avg Dev'],
-                        aapm_details['SNR Std Dev']
+                        aapm_details['Avg local Noise'],
+                        aapm_details['Global Noise'],
+                        aapm_details['Avg local SNR'],
+                        aapm_details['Global SNR']
                     ]
         
                     # laver et Results objekt
@@ -3752,41 +3754,103 @@ def calculate_flatfield_mammo(image2d, mask_max, mask_outer, image_info, paramse
 def calculate_aapm(roi_array, image2d):
     """Beregner AAPM-relaterede værdier, herunder non-uniformitet."""
     try:
-        # beregning af gennemsnitssignal og støj (standardafvigelse) for hver ROI
+        # Beregning af gennemsnitssignal og støj (standardafvigelse) for hver ROI
         avg_signals = []
         std_devs = []  # Standardafvigelser for hver ROI. Afspejler støj/variation inden for hver ROI
         
         for i, roi in enumerate(roi_array):
-            # opretter maske for den nuværende ROI
+            # Opretter maske for den nuværende ROI
             roi_mask = np.zeros(image2d.shape, dtype=bool)
-            roi_mask[roi] = True  # antager at roi indeholder koordinater til ROI'en
+            roi_mask[roi] = True  # Antager at roi indeholder koordinater til ROI'en
 
-            # beregner gennemsnit og standardafvigelse for den nuværende ROI
+            # Beregner gennemsnit og standardafvigelse for den nuværende ROI
             avg_signal = np.mean(image2d[roi_mask])
             std_dev = np.std(image2d[roi_mask])
 
             avg_signals.append(avg_signal)
             std_devs.append(std_dev)
 
-        print("Avg Signals for each ROI:", avg_signals)
-
-        # beregner overordnet gennemsnitssignal- og støj på tværs af alle ROIs
+        # Beregning af globale værdier
         avg_signal_overall = np.mean(avg_signals)
         avg_noise = np.mean(std_devs)
 
-        # beregner SNR for hver ROI
+        # Beregning af SNR for hver ROI
         snrs = [avg / noise if noise != 0 else None for avg, noise in zip(avg_signals, std_devs)]
         avg_snr = np.mean([snr for snr in snrs if snr is not None])
 
-        # beregner lokal non-uniformity baseret på forskellen mellem naboer
-        local_non_uniformity_values = []
-        grid_size = int(np.sqrt(len(roi_array)))  # antager kvadratisk grid for simplificering
+        # Lokal støjberegning (Noise Uniformity)
+        local_noise_uniformity_values = []
+        grid_size = int(np.sqrt(len(roi_array)))  # Antager kvadratisk grid for simplificering
 
+        for i in range(len(std_devs)):
+            row, col = divmod(i, grid_size)
+            neighbor_noises = []
+
+            # Henter nabo-støjværdier (venstre, højre, over, under)
+            if row > 0:  # over
+                neighbor_noises.append(std_devs[(row - 1) * grid_size + col])
+            if row < grid_size - 1:  # under
+                neighbor_noises.append(std_devs[(row + 1) * grid_size + col])
+            if col > 0:  # venstre
+                neighbor_noises.append(std_devs[row * grid_size + (col - 1)])
+            if col < grid_size - 1:  # højre
+                neighbor_noises.append(std_devs[row * grid_size + (col + 1)])
+
+            # Beregner lokal noise uniformity
+            if neighbor_noises:
+                avg_neighbor_noise = np.mean(neighbor_noises)
+                diff = abs(std_devs[i] - avg_neighbor_noise) / avg_noise if avg_noise != 0 else 0
+                local_noise_uniformity_values.append(diff)
+
+        # Gennemsnitlig lokal noise uniformity
+        avg_local_noise = np.mean(local_noise_uniformity_values) if local_noise_uniformity_values else 0
+
+        # Global Noise Uniformity
+        global_min_noise = np.min(std_devs)
+        global_max_noise = np.max(std_devs)
+        global_noise = (global_max_noise - global_min_noise) / avg_noise if avg_noise != 0 else 0
+
+        # Lokal SNR Uniformity
+        local_snr_uniformity_values = []
+
+        for i in range(len(snrs)):
+            if snrs[i] is None:
+                continue
+            row, col = divmod(i, grid_size)
+            neighbor_snrs = []
+
+            # Henter nabo-SNR-værdier
+            if row > 0:  # over
+                neighbor_snrs.append(snrs[(row - 1) * grid_size + col])
+            if row < grid_size - 1:  # under
+                neighbor_snrs.append(snrs[(row + 1) * grid_size + col])
+            if col > 0:  # venstre
+                neighbor_snrs.append(snrs[row * grid_size + (col - 1)])
+            if col < grid_size - 1:  # højre
+                neighbor_snrs.append(snrs[row * grid_size + (col + 1)])
+
+            # Beregner lokal SNR uniformity
+            neighbor_snrs = [snr for snr in neighbor_snrs if snr is not None]
+            if neighbor_snrs:
+                avg_neighbor_snr = np.mean(neighbor_snrs)
+                diff = abs(snrs[i] - avg_neighbor_snr) / avg_snr if avg_snr != 0 else 0
+                local_snr_uniformity_values.append(diff)
+
+        # Gennemsnitlig lokal SNR uniformity
+        avg_local_snr = np.mean(local_snr_uniformity_values) if local_snr_uniformity_values else 0
+
+        # Global SNR Uniformity
+        snrs_clean = [snr for snr in snrs if snr is not None]
+        global_min_snr = np.min(snrs_clean) if snrs_clean else 0
+        global_max_snr = np.max(snrs_clean) if snrs_clean else 0
+        global_snr = (global_max_snr - global_min_snr) / avg_snr if avg_snr != 0 else 0
+
+        # Beregning af lokal og global signal non-uniformity
+        local_non_uniformity_values = []
         for i in range(len(avg_signals)):
             row, col = divmod(i, grid_size)
             neighbor_signals = []
 
-            # henter nabosignaler (venstre, højre, over, under)
             if row > 0:  # over
                 neighbor_signals.append(avg_signals[(row - 1) * grid_size + col])
             if row < grid_size - 1:  # under
@@ -3796,23 +3860,17 @@ def calculate_aapm(roi_array, image2d):
             if col < grid_size - 1:  # højre
                 neighbor_signals.append(avg_signals[row * grid_size + (col + 1)])
 
-            # beregner lokal non-uniformity som forskellen til gennemsnittet af naboer
             if neighbor_signals:
                 avg_neighbor_signal = np.mean(neighbor_signals)
                 diff = abs(avg_signals[i] - avg_neighbor_signal) / avg_signal_overall if avg_signal_overall != 0 else 0
                 local_non_uniformity_values.append(diff)
 
-        # gennemsnitlig lokal non-uniformity
         local_non_uniformity = np.mean(local_non_uniformity_values) if local_non_uniformity_values else 0
-
-        # Global non-uniformity som normaliseret forskel mellem maks og min af gennemsnitssignalet for ROIs
         global_min_signal = np.min(avg_signals)
         global_max_signal = np.max(avg_signals)
         global_non_uniformity = (global_max_signal - global_min_signal) / avg_signal_overall if avg_signal_overall != 0 else 0
-        print(f"Global Max Signal: {global_max_signal}, Global Min Signal: {global_min_signal}")
 
-
-        # opsummering af beregnede værdier
+        # Opsummering af beregnede værdier
         aapm_details = {
             'Avg Signal': avg_signal_overall,
             'Avg Noise': avg_noise,
@@ -3821,8 +3879,10 @@ def calculate_aapm(roi_array, image2d):
             'Global Non-uniformity': global_non_uniformity,
             'Avg Min # Signal': global_min_signal,
             'Avg Max # Signal': global_max_signal,
-            'Avg Dev': np.std(avg_signals),
-            'SNR Std Dev': np.std([snr for snr in snrs if snr is not None]),
+            'Avg local Noise': avg_local_noise,
+            'Global Noise': global_noise,
+            'Avg local SNR': avg_local_snr,
+            'Global SNR': global_snr,
         }
 
         return aapm_details

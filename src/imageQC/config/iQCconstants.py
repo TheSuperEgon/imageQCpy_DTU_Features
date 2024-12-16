@@ -187,15 +187,17 @@ HEADERS = {
             'alt3': ['Avg', 'Avg SNR', 'n ROIs',
                      'Deviating avgs', 'Deviating SNRs', 'Deviating ROIs',
                      '% dev ROIs', 'Deviating pixels', '% dev pixels'],
-            'alt4': ['Avg Signal',            # Average signal over alle ROIs
-                     'Avg Noise',             # Average Noise over alle ROIs
+            'alt4': ['Avg sign',              # Average signal over alle ROIs
+                     'Avg noise',             # Average noise over alle ROIs
                      'Avg SNR',               # Average SNR over alle ROIs
-         	     'Avg local Non-uni',      #Average Lokal non-uniformitet
-         	     'Global Non-uni',     # Global non-uniformitet
-        	     'Avg Min ROI# Sign',                # Average Minimum PixValue i en ROI
-        	     'AVG Max ROI# Sign',                # Average Maximum PixValue i en ROI
-      		     'Avg Dev',                   # Avg Dev af PixValues på tværs af ROIs
-        	     'SNR Std Dev']              # Standardafvigelse af SNR over alle ROIs
+             	     'Avg lcl sign non-uni',  # Average lokal non-uniformitet
+             	     'Gbl sign non-uni',      # Global non-uniformitet
+            	     'Avg min ROI# sign',     # Average Minimum PixValue i en ROI
+            	     'Avg max ROI# sign',     # Average Maximum PixValue i en ROI
+          		     'Avg lcl noise non-uni', # Average local noise non-uniformitet                                     
+                     'Gbl noise non-uni',     # Global noise non-uniformitet
+                     'Avg local SNR non-uni', # Average local SNR non-uniformitet
+                     'Global SNR non-uni']    # Global SNR non-uniformitet
             },
         'Noi': {'alt0': ['Avg pixel value', 'Noise=Stdev']},
         'MTF': {
